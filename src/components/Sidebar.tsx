@@ -1,8 +1,21 @@
+"use client";
+
 import Link from "next/link";
-import { cookies } from 'next/headers';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { LayoutDashboard, Users, Clock, Calculator, CalendarCheck, Settings, CalendarDays, ShieldCheck } from "lucide-react";
 
 export function Sidebar({ user, role }: { user?: string, role?: string }) {
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const router = useRouter();
+
+  const handleLogout = () => {
+    setIsLoggingOut(true);
+    document.cookie = "axia_user=; path=/; max-age=0";
+    document.cookie = "axia_role=; path=/; max-age=0";
+    router.push("/login");
+    router.refresh();
+  };
 
   let menuItems = [
     { name: "Tablero", href: "/", icon: LayoutDashboard },
@@ -49,19 +62,10 @@ export function Sidebar({ user, role }: { user?: string, role?: string }) {
           <p className="text-xs text-axia-cream/50 uppercase tracking-wider font-bold">Usuario activo</p>
           <p className="text-sm font-bold text-white mt-1">{user || "Desconocido"}</p>
         </div>
-        <form action={async () => {
-          "use server";
-          const { cookies } = await import("next/headers");
-          cookies().delete("axia_user");
-          cookies().delete("axia_role");
-          const { redirect } = await import("next/navigation");
-          redirect("/login");
-        }}>
-          <button className="flex items-center gap-3 px-4 py-3 w-full rounded-xl transition-all duration-200 hover:bg-white/10 text-rose-300 hover:text-rose-400 font-bold">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-            <span>Cerrar Sesión</span>
-          </button>
-        </form>
+        <button onClick={handleLogout} disabled={isLoggingOut} className="flex items-center gap-3 px-4 py-3 w-full rounded-xl transition-all duration-200 hover:bg-white/10 text-rose-300 hover:text-rose-400 font-bold disabled:opacity-50">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          <span>{isLoggingOut ? "Cerrando Sesión..." : "Cerrar Sesión"}</span>
+        </button>
       </div>
     </aside>
   );
