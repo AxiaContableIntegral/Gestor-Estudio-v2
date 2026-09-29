@@ -49,11 +49,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-500">
-        <div className="bg-axia-blue p-8 text-center">
-          <h1 className="text-3xl font-bold tracking-wider text-axia-cream">AXIA</h1>
-          <p className="text-axia-orange font-semibold mt-1">Gestor del Estudio</p>
+    <div className="min-h-screen flex flex-col justify-center items-center p-4 relative">
+      <div className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: "url('/bg-login.jpg')" }}>
+        <div className="absolute inset-0 bg-axia-dark/60 backdrop-blur-[2px]"></div>
+      </div>
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 z-10 relative">
+        <div className="bg-axia-blue p-8 flex flex-col items-center justify-center">
+          <img src="/axia-logo.png" alt="Axia" className="h-12 object-contain mb-2" />
+          <p className="text-axia-orange font-semibold tracking-wide">Gestor del Estudio</p>
         </div>
         
         <div className="p-8">
