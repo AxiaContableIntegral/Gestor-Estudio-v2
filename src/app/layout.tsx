@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 import { Toaster } from "sonner";
+import NextTopLoader from 'nextjs-toploader';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,9 +24,10 @@ export default function RootLayout({
 
   return (
     <html lang="es">
-      <body className={`${inter.className} bg-slate-50 text-slate-900`}>
+      <body className={`${inter.className} bg-slate-50 text-slate-900`} suppressHydrationWarning>
+        <NextTopLoader color="#E47012" showSpinner={false} />
         <div className="flex min-h-screen">
-          {user && <Sidebar user={user} role={role} />}
+          {user ? <Sidebar user={user} role={role} /> : null}
           <main className={`flex-1 overflow-y-auto bg-slate-50/50 ${user ? "p-8" : "p-0"}`}>
             {children}
           </main>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Users, Building, Plus, Trash2, Edit2, DollarSign } from "lucide-react";
+import { Users, Building, Plus, Trash2, Edit2, DollarSign, Check, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -13,6 +13,8 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
   // Modals state
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
   const [isSociedadModalOpen, setIsSociedadModalOpen] = useState(false);
+  const [editingClienteId, setEditingClienteId] = useState<string | null>(null);
+  const [updatingPagoId, setUpdatingPagoId] = useState<string | null>(null);
 
   // Forms state
   const [formDataCliente, setFormDataCliente] = useState({
@@ -48,18 +50,69 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
   const handleSaveCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.from("clientes").insert([{
+    const payload = {
       ...formDataCliente,
       ultima_cobranza_monto: formDataCliente.ultima_cobranza_monto ? Number(formDataCliente.ultima_cobranza_monto) : null
-    }]);
+    };
+
+    let error;
+    if (editingClienteId) {
+      const res = await supabase.from("clientes").update(payload).eq("id", editingClienteId);
+      error = res.error;
+    } else {
+      const res = await supabase.from("clientes").insert([payload]);
+      error = res.error;
+    }
+
     setLoading(false);
     if (error) {
       toast.error("Error al guardar cliente: " + error.message);
     } else {
-      toast.success("Cliente guardado");
+      toast.success(editingClienteId ? "Cliente actualizado" : "Cliente guardado");
       setIsClienteModalOpen(false);
+      setEditingClienteId(null);
       setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Mensual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "" });
       router.refresh();
+    }
+  };
+
+  const openNewCliente = () => {
+    setEditingClienteId(null);
+    setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Mensual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "" });
+    setIsClienteModalOpen(true);
+  };
+
+  const openTrabajoEventual = () => {
+    setEditingClienteId(null);
+    setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Eventual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "" });
+    setIsClienteModalOpen(true);
+  };
+
+  const openEditCliente = (c: any) => {
+    setEditingClienteId(c.id);
+    setFormDataCliente({
+      cliente: c.cliente,
+      linea_negocio: c.linea_negocio,
+      tipo_honorario: c.tipo_honorario,
+      ultima_cobranza_monto: c.ultima_cobranza_monto || "",
+      ultima_cobranza_periodo: c.ultima_cobranza_periodo || "",
+    });
+    setIsClienteModalOpen(true);
+  };
+
+  const togglePagoConfirmado = async (c: any) => {
+    if (updatingPagoId === c.id) return;
+    setUpdatingPagoId(c.id);
+    const newValue = !c.pago_confirmado;
+    const { error } = await supabase.from("clientes").update({ pago_confirmado: newValue }).eq("id", c.id);
+    if (error) {
+      toast.error("Error al actualizar estado de pago: " + error.message);
+      setUpdatingPagoId(null);
+    } else {
+      c.pago_confirmado = newValue; // Optimistic update to prevent flash of old state
+      toast.success(newValue ? "Marcado como COBRADO" : "Marcado como PENDIENTE");
+      router.refresh();
+      setUpdatingPagoId(null);
     }
   };
 
@@ -141,9 +194,14 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-slate-50">
               <p className="text-sm text-axia-gray font-medium">Un cliente puede tener un honorario distinto por cada línea de negocio.</p>
-              <button onClick={() => setIsClienteModalOpen(true)} className="flex items-center gap-2 bg-axia-blue text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-blue-800 transition-colors">
-                <Plus size={16}/> Agregar Cliente
-              </button>
+              <div className="flex gap-2">
+                <button onClick={openTrabajoEventual} className="flex items-center gap-2 bg-axia-teal text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-teal-600 transition-colors">
+                  <Plus size={16}/> Trabajo Eventual
+                </button>
+                <button onClick={openNewCliente} className="flex items-center gap-2 bg-axia-blue text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-blue-800 transition-colors">
+                  <Plus size={16}/> Agregar Cliente
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -154,6 +212,7 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
                     <th className="p-4">Tipo</th>
                     <th className="p-4 text-right">Honorario Mensual ($)</th>
                     <th className="p-4">Período</th>
+                    <th className="p-4 text-center">Pagó?</th>
                     <th className="p-4 text-right">Acciones</th>
                   </tr>
                 </thead>
@@ -167,8 +226,33 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
                       <td className="p-4"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-bold">{c.tipo_honorario}</span></td>
                       <td className="p-4 font-bold text-emerald-600 text-right">{c.ultima_cobranza_monto ? `$ ${Number(c.ultima_cobranza_monto).toLocaleString("es-AR")}` : "—"}</td>
                       <td className="p-4 text-axia-gray font-medium">{c.ultima_cobranza_periodo || "—"}</td>
+                      <td className="p-4 text-center">
+                        {(c.tipo_honorario === "Mensual" || c.tipo_honorario === "Eventual") && (
+                          <button 
+                            onClick={() => togglePagoConfirmado(c)}
+                            disabled={updatingPagoId === c.id}
+                            className={`px-3 py-1 rounded-full text-xs font-bold shadow-sm transition-colors flex items-center gap-1 mx-auto ${
+                              updatingPagoId === c.id ? 'bg-gray-100 text-gray-500 cursor-wait' 
+                              : c.pago_confirmado ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' 
+                              : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                            }`}
+                            title={c.pago_confirmado ? "Marcar como no cobrado" : "Marcar como cobrado"}
+                          >
+                            {updatingPagoId === c.id ? (
+                              <><span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full"></span> ...</>
+                            ) : c.pago_confirmado ? (
+                              <><Check size={12}/> SI</>
+                            ) : (
+                              <><X size={12}/> NO</>
+                            )}
+                          </button>
+                        )}
+                      </td>
                       <td className="p-4 text-right">
-                        <button onClick={() => handleDeleteCliente(c.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-md transition-colors opacity-100" title="Eliminar"><Trash2 size={16}/></button>
+                        <div className="flex justify-end gap-1 opacity-100 transition-opacity">
+                          <button onClick={() => openEditCliente(c)} className="p-1 text-axia-blue hover:bg-blue-50 rounded-md transition-colors" title="Editar"><Edit2 size={16}/></button>
+                          <button onClick={() => handleDeleteCliente(c.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-md transition-colors" title="Eliminar"><Trash2 size={16}/></button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -229,7 +313,7 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
       {isClienteModalOpen && (
         <div className="fixed inset-0 bg-axia-dark/50 flex items-center justify-center z-50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 p-6">
-            <h3 className="text-xl font-bold text-axia-blue mb-6">Agregar Cliente / Honorario</h3>
+            <h3 className="text-xl font-bold text-axia-blue mb-6">{editingClienteId ? "Editar Cliente / Honorario" : "Agregar Cliente / Honorario"}</h3>
             <form onSubmit={handleSaveCliente} className="space-y-4">
               <div>
                 <label className="block text-sm font-bold text-axia-gray mb-1.5">Nombre del Cliente</label>
@@ -287,7 +371,7 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-axia-gray mb-1.5">CUIT (solo números)</label>
-                  <input type="text" maxLength={11} value={formDataSociedad.cuit} onChange={e => setFormDataSociedad({...formDataSociedad, cuit: e.target.value.replace(/\D/g,)})} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm font-mono" />
+                  <input type="text" maxLength={11} value={formDataSociedad.cuit} onChange={e => setFormDataSociedad({...formDataSociedad, cuit: e.target.value.replace(/\D/g, '')})} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm font-mono" />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-axia-gray mb-1.5">Cliente Padre</label>
