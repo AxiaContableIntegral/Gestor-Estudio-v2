@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     async function loadUsers() {
@@ -41,6 +42,7 @@ export default function LoginPage() {
       return;
     }
 
+    setIsSubmitting(true);
     document.cookie = `axia_user=${selectedUser}; path=/; max-age=86400`;
     document.cookie = `axia_role=${userObj?.rol}; path=/; max-age=86400`;
     
@@ -49,13 +51,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center p-4 relative">
-      <div className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: "url('/BackGrounAxia.jpg')" }}>
-        <div className="absolute inset-0 bg-axia-dark/60 backdrop-blur-[2px]"></div>
-      </div>
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 z-10 relative">
-        <div className="bg-axia-blue p-8 flex flex-col items-center justify-center">
-          <img src="/LogoBajada7.png" alt="Axia Gestor del Estudio" className="h-16 object-contain" />
+    <div className="min-h-screen flex flex-col justify-center items-center p-4 relative bg-gradient-to-br from-slate-900 via-axia-blue to-slate-900">
+      
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] overflow-hidden animate-in zoom-in-95 duration-500 z-10 relative border border-white/10">
+        <div className="bg-axia-blue p-10 flex flex-col items-center justify-center">
+          <img src="/LogoBajada7.png" alt="Axia Gestor del Estudio" className="h-28 w-auto object-contain drop-shadow-md" />
         </div>
         
         <div className="p-8">
@@ -99,8 +99,8 @@ export default function LoginPage() {
 
             {error && <p className="text-sm font-bold text-rose-500 bg-rose-50 p-2 rounded text-center">{error}</p>}
 
-            <button type="submit" disabled={loading} className="w-full bg-axia-blue text-white font-bold rounded-lg p-3 hover:bg-blue-800 transition-colors shadow-md mt-4 disabled:opacity-50">
-              Ingresar al Gestor
+            <button type="submit" disabled={loading || isSubmitting} className="w-full bg-axia-blue text-white font-bold rounded-lg p-3 hover:bg-blue-800 transition-colors shadow-md mt-4 disabled:opacity-50">
+              {isSubmitting ? "Cargando..." : "Ingresar al Gestor"}
             </button>
           </form>
         </div>

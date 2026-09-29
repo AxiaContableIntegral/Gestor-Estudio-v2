@@ -26,7 +26,7 @@ export default function RootLayout({
       <body className={`${inter.className} bg-slate-50 text-slate-900`}>
         <div className="flex min-h-screen">
           {user && <Sidebar user={user} role={role} />}
-          <main className="flex-1 p-8 overflow-y-auto bg-slate-50/50">
+          <main className={`flex-1 overflow-y-auto bg-slate-50/50 ${user ? "p-8" : "p-0"}`}>
             {children}
           </main>
         </div>
