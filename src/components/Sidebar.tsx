@@ -21,7 +21,7 @@ export function Sidebar({ user, role }: { user?: string, role?: string }) {
   return (
     <aside className="w-64 bg-axia-blue text-white h-screen sticky top-0 flex flex-col overflow-y-auto">
       <div className="p-6">
-        <h1 className="text-2xl font-bold tracking-wider text-axia-cream">AXIA</h1>
+        <img src="/axia-logo.png" alt="Axia" className="h-10 object-contain mb-1" />
         <p className="text-sm text-axia-orange font-semibold">Gestor del Estudio</p>
       </div>
 
