@@ -15,10 +15,20 @@ export default async function TareasPage() {
   }
   const { data: tareas, error } = await query;
 
-  if (error) {
-    console.error("Error cargando tareas:", error);
+  const { data: clientes, error: errorClientes } = await supabase
+    .from("clientes")
+    .select("*")
+    .order("cliente", { ascending: true });
+
+  const { data: sociedades, error: errorSociedades } = await supabase
+    .from("sociedades")
+    .select("*")
+    .order("sociedad", { ascending: true });
+
+  if (error || errorClientes || errorSociedades) {
+    console.error("Error cargando tareas:", error || errorClientes || errorSociedades);
     return <div>Error cargando la base de datos. Verificá la consola.</div>;
   }
 
-  return <TareasClient tareas={tareas || []} />;
+  return <TareasClient tareas={tareas || []} dbClientes={clientes || []} dbSociedades={sociedades || []} />;
 }

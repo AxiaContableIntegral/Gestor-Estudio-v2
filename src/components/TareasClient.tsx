@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
-export default function TareasClient({ tareas }: { tareas: any[] }) {
+export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [] }: { tareas: any[], dbClientes?: any[], dbSociedades?: any[] }) {
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<any>(null);
@@ -285,7 +285,7 @@ export default function TareasClient({ tareas }: { tareas: any[] }) {
         </div>
       </div>
 
-            {isModalOpen && <NuevaTareaModal onClose={() => setIsModalOpen(false)} />}
+      {isModalOpen && <NuevaTareaModal onClose={() => setIsModalOpen(false)} clientes={dbClientes} sociedades={dbSociedades} />}
       
       {taskToEdit && <EditarTareaModal tarea={taskToEdit} onClose={() => setTaskToEdit(null)} />}
 

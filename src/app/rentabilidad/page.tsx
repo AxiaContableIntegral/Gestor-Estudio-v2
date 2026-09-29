@@ -17,12 +17,14 @@ export default async function RentabilidadPage() {
   const { data: clientes } = await supabase.from("clientes").select("*");
   const { data: equipo } = await supabase.from("equipo").select("*");
   const { data: tiempos } = await supabase.from("tiempos_log").select("*");
+  const { data: gastos } = await supabase.from("gastos").select("*");
 
   return (
     <RentabilidadClient 
       clientes={clientes || []} 
       equipo={equipo || []} 
       tiempos={tiempos || []} 
+      gastos_db={gastos || []}
     />
   );
 }

@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-export function NuevaTareaModal({ onClose }: { onClose: () => void }) {
+export function NuevaTareaModal({ onClose, clientes = [], sociedades = [] }: { onClose: () => void, clientes?: any[], sociedades?: any[] }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -20,22 +20,17 @@ export function NuevaTareaModal({ onClose }: { onClose: () => void }) {
     horas_presupuestadas: "1.0",
     estado: "Pendiente",
     descripcion: "",
-    orden: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    
-    const descToSave = formData.orden ? `[Orden: ${formData.orden}] ${formData.descripcion}` : formData.descripcion;
     const payload = { ...formData };
-    delete payload.orden;
 
     const { error } = await supabase.from("tareas").insert([
       {
         ...payload,
-        descripcion: descToSave,
         horas_presupuestadas: parseFloat(formData.horas_presupuestadas),
         origen: "Manual",
       },
@@ -73,7 +68,12 @@ export function NuevaTareaModal({ onClose }: { onClose: () => void }) {
             {/* Fila 1 */}
             <div>
               <label className="block text-sm font-bold text-axia-gray mb-1.5">Cliente</label>
-              <input required type="text" name="cliente" value={formData.cliente} onChange={handleChange} placeholder="Ej: SMASH CLUB" className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm" />
+              <select required name="cliente" value={formData.cliente} onChange={handleChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm">
+                <option value="">Seleccionar cliente...</option>
+                {clientes.map(c => (
+                  <option key={c.id || c.cliente} value={c.cliente}>{c.cliente}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-bold text-axia-gray mb-1.5">Línea de Negocio</label>
@@ -84,14 +84,16 @@ export function NuevaTareaModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <label className="block text-sm font-bold text-axia-gray mb-1.5">Sociedad (opcional)</label>
-              <input type="text" name="sociedad" value={formData.sociedad} onChange={handleChange} placeholder="Ej: Smash SRL" className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm" />
+              <select name="sociedad" value={formData.sociedad} onChange={handleChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm">
+                <option value="">Ninguna</option>
+                {sociedades.map(s => (
+                  <option key={s.id || s.sociedad} value={s.sociedad}>{s.sociedad}</option>
+                ))}
+              </select>
             </div>
 
             {/* Fila 2 */}
-            <div>
-              <label className="block text-sm font-bold text-axia-gray mb-1.5">N° de Orden / ID</label>
-              <input type="text" name="orden" value={formData.orden} onChange={handleChange} placeholder="Ej: 1400" className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm" />
-            </div>
+            {/* ID se genera solo, se elimina el campo orden */}
             <div>
               <label className="block text-sm font-bold text-axia-gray mb-1.5">Categoría</label>
               <select name="categoria" value={formData.categoria} onChange={handleChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm">
@@ -125,7 +127,11 @@ export function NuevaTareaModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <label className="block text-sm font-bold text-axia-gray mb-1.5">Horas presupuestadas</label>
-              <input required type="number" step="0.5" min="0" name="horas_presupuestadas" value={formData.horas_presupuestadas} onChange={handleChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm" />
+              <select required name="horas_presupuestadas" value={formData.horas_presupuestadas} onChange={handleChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm">
+                {[0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20].map(h => (
+                  <option key={h} value={h}>{h} hs</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-bold text-axia-gray mb-1.5">Estado</label>

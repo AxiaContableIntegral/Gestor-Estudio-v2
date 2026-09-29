@@ -1,15 +1,23 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Calculator, Calendar, DollarSign, Users, Briefcase, TrendingUp } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Calculator, Calendar, DollarSign, Users, Briefcase, TrendingUp, Receipt, Plus, Copy, CheckCircle2, Save, Trash2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
-export default function RentabilidadClient({ clientes, equipo, tiempos }: { clientes: any[], equipo: any[], tiempos: any[] }) {
+export default function RentabilidadClient({ clientes, equipo, tiempos, gastos_db = [] }: { clientes: any[], equipo: any[], tiempos: any[], gastos_db?: any[] }) {
+  const router = useRouter();
   const [mesSel, setMesSel] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
   const [lineaSel, setLineaSel] = useState("Todas");
   const [activeTab, setActiveTab] = useState("cliente");
+  
+  const [isAddingGasto, setIsAddingGasto] = useState(false);
+  const [newGasto, setNewGasto] = useState({ tipo: "Único", concepto: "", monto: "" });
+  const [loadingGasto, setLoadingGasto] = useState(false);
 
   // Calculations
   const calc = useMemo(() => {
@@ -23,6 +31,8 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
       const d = new Date(t.fecha_trabajo + "T00:00:00");
       return d.getFullYear() === anio && (d.getMonth() + 1) === mes;
     });
+
+    const gastosMes = gastos_db.filter(g => g.mes === mesSel);
 
     // 1. Ingresos Mensuales (de clientes)
     let ingresosMensuales = 0;
@@ -38,6 +48,7 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
     let horasFacturables = 0;
     let horasInternas = 0;
     let costoStd = 0;
+    let costoInterno = 0;
 
     const statsCliente = new Map(); // cliente -> { horas, costo, ingresos }
     
@@ -48,9 +59,9 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
       }
     });
 
-    const statsEquipo = new Map(); // nombre -> { horasFact, horasInt, costo, sueldo, tarifa }
+    const statsEquipo = new Map(); // nombre -> { horasFact, horasInt, costoFact, costoInt, sueldo, tarifa }
     equipo.forEach(e => {
-      statsEquipo.set(e.nombre, { horasFact: 0, horasInt: 0, costo: 0, sueldo: Number(e.sueldo_mensual), tarifa: Number(e.tarifa_hora), es_socio: e.es_socio === "Si" });
+      statsEquipo.set(e.nombre, { horasFact: 0, horasInt: 0, costoFact: 0, costoInt: 0, sueldo: Number(e.sueldo_mensual), tarifa: Number(e.tarifa_hora), es_socio: e.es_socio === "Si" });
     });
 
     tMes.forEach(t => {
@@ -62,8 +73,20 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
       
       const esInterno = t.cliente?.toLowerCase().includes("interno") || clientes.find(c => c.cliente === t.cliente)?.tipo_honorario === "Interno";
 
+      if (statsEquipo.has(t.persona)) {
+        const stE = statsEquipo.get(t.persona);
+        if (esInterno) {
+          stE.horasInt += Number(t.horas);
+          stE.costoInt += costo;
+        } else {
+          stE.horasFact += Number(t.horas);
+          stE.costoFact += costo;
+        }
+      }
+
       if (esInterno) {
         horasInternas += Number(t.horas);
+        costoInterno += costo;
       } else {
         horasFacturables += Number(t.horas);
         costoStd += costo;
@@ -74,13 +97,6 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
         const stC = statsCliente.get(t.cliente);
         stC.horas += Number(t.horas);
         stC.costo += costo;
-      }
-
-      if (statsEquipo.has(t.persona)) {
-        const stE = statsEquipo.get(t.persona);
-        if (esInterno) stE.horasInt += Number(t.horas);
-        else stE.horasFact += Number(t.horas);
-        stE.costo += costo;
       }
     });
 
@@ -98,24 +114,124 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
       margen_pct: v.ingresos > 0 ? ((v.ingresos - v.costo) / v.ingresos) * 100 : 0
     })).sort((a, b) => b.margen - a.margen);
 
+    let totalDiferencialOperativo = 0;
+
     const listEquipo = Array.from(statsEquipo.entries()).map(([k, v]) => {
       const hTot = v.horasFact + v.horasInt;
+      const costoTot = v.costoFact + v.costoInt;
+      const ajuste = v.es_socio ? 0 : costoTot - v.sueldo;
+      totalDiferencialOperativo += ajuste;
+
       return {
         nombre: k,
         horas: hTot,
         horas_fact: v.horasFact,
+        horas_int: v.horasInt,
         pct_fact: hTot > 0 ? (v.horasFact / hTot) * 100 : 0,
         tarifa: v.tarifa,
-        imputado: v.costo,
+        imputado_fact: v.costoFact,
+        imputado_int: v.costoInt,
+        costo_total: costoTot,
         sueldo: v.sueldo,
-        ajuste: v.es_socio ? 0 : v.costo - v.sueldo,
+        ajuste: ajuste,
         costo_real: hTot > 0 && !v.es_socio ? v.sueldo / hTot : 0,
         es_socio: v.es_socio
       };
     });
 
-    return { ingresosMensuales, horasFacturables, horasInternas, pctFacturable, costoStd, margenBruto, listClientes, listEquipo };
-  }, [mesSel, lineaSel, clientes, equipo, tiempos]);
+    let totalGastosManuales = 0;
+    gastosMes.forEach(g => {
+      totalGastosManuales += Number(g.monto);
+    });
+
+    // Resultado Final
+    // Ingresos - Costo Std - Gastos Manuales - Costo Interno + Diferencial Operativo
+    const resultadoFinal = margenBruto - costoInterno + totalDiferencialOperativo - totalGastosManuales;
+
+    return { 
+      ingresosMensuales, horasFacturables, horasInternas, pctFacturable, costoStd, margenBruto, 
+      listClientes, listEquipo,
+      gastosMes, costoInterno, totalDiferencialOperativo, totalGastosManuales, resultadoFinal
+    };
+  }, [mesSel, lineaSel, clientes, equipo, tiempos, gastos_db]);
+
+  const handleAddGasto = async () => {
+    if (!newGasto.concepto || !newGasto.monto) return;
+    setLoadingGasto(true);
+    const { error } = await supabase.from("gastos").insert([{
+      mes: mesSel,
+      tipo: newGasto.tipo,
+      concepto: newGasto.concepto,
+      monto: parseFloat(newGasto.monto),
+      estado: newGasto.tipo === "Recurrente" ? "Pendiente" : "Confirmado"
+    }]);
+    setLoadingGasto(false);
+    if (error) {
+      toast.error("Error al guardar: " + error.message);
+    } else {
+      toast.success("Gasto registrado");
+      setIsAddingGasto(false);
+      setNewGasto({ tipo: "Único", concepto: "", monto: "" });
+      router.refresh();
+    }
+  };
+
+  const confirmarGasto = async (id: string, monto: number) => {
+    const { error } = await supabase.from("gastos").update({ estado: "Confirmado", monto }).eq("id", id);
+    if (!error) {
+      toast.success("Gasto confirmado");
+      router.refresh();
+    }
+  };
+  
+  const eliminarGasto = async (id: string) => {
+    if (!confirm("¿Eliminar gasto?")) return;
+    const { error } = await supabase.from("gastos").delete().eq("id", id);
+    if (!error) {
+      toast.success("Gasto eliminado");
+      router.refresh();
+    }
+  };
+
+  const copiarRecurrentesMesPasado = async () => {
+    // Calculo mes anterior
+    const [y, m] = mesSel.split("-").map(Number);
+    let prevM = m - 1;
+    let prevY = y;
+    if (prevM === 0) { prevM = 12; prevY--; }
+    const prevMesStr = `${prevY}-${String(prevM).padStart(2, "0")}`;
+    
+    const prevGastos = gastos_db.filter(g => g.mes === prevMesStr && g.tipo === "Recurrente");
+    if (prevGastos.length === 0) {
+      toast.info("No hay gastos recurrentes en el mes anterior para copiar.");
+      return;
+    }
+    
+    // evito duplicar los que ya existen con mismo concepto en mes actual
+    const currentConceptos = new Set(calc.gastosMes.map(g => g.concepto));
+    const aInsertar = prevGastos
+      .filter(g => !currentConceptos.has(g.concepto))
+      .map(g => ({
+        mes: mesSel,
+        tipo: "Recurrente",
+        concepto: g.concepto,
+        monto: g.monto,
+        estado: "Pendiente"
+      }));
+
+    if (aInsertar.length === 0) {
+      toast.info("Los recurrentes del mes anterior ya existen en este mes.");
+      return;
+    }
+
+    const { error } = await supabase.from("gastos").insert(aInsertar);
+    if (error) {
+      toast.error("Error al copiar: " + error.message);
+    } else {
+      toast.success(`${aInsertar.length} gastos recurrentes copiados.`);
+      router.refresh();
+    }
+  };
 
   return (
     <div className="animate-in fade-in duration-500 pb-20">
@@ -151,17 +267,19 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
           <p className="text-3xl font-bold text-axia-blue mt-1">$ {calc.ingresosMensuales.toLocaleString("es-AR")}</p>
         </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <p className="text-xs font-bold text-axia-gray uppercase tracking-wider">% Horas Facturables</p>
-          <p className="text-3xl font-bold text-axia-teal mt-1">{calc.pctFacturable.toFixed(0)}%</p>
-        </div>
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <p className="text-xs font-bold text-axia-gray uppercase tracking-wider">Margen Bruto Std</p>
           <p className={`text-3xl font-bold mt-1 ${calc.margenBruto >= 0 ? "text-emerald-600" : "text-rose-500"}`}>$ {calc.margenBruto.toLocaleString("es-AR")}</p>
           <p className="text-xs text-axia-gray mt-1">{calc.ingresosMensuales ? ((calc.margenBruto / calc.ingresosMensuales) * 100).toFixed(0) : 0}% s/ Ingresos</p>
         </div>
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 opacity-70">
-          <p className="text-xs font-bold text-axia-gray uppercase tracking-wider">Resultado Final</p>
-          <p className="text-sm font-bold mt-1 text-gray-400 italic">Requiere módulo de Costos</p>
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <p className="text-xs font-bold text-axia-gray uppercase tracking-wider">Diferencial Equipo</p>
+          <p className={`text-3xl font-bold mt-1 ${calc.totalDiferencialOperativo >= 0 ? "text-emerald-600" : "text-rose-500"}`}>$ {calc.totalDiferencialOperativo.toLocaleString("es-AR")}</p>
+          <p className="text-xs text-axia-gray mt-1">Imputado vs Sueldos</p>
+        </div>
+        <div className="bg-axia-blue rounded-xl p-5 shadow-md border border-blue-800 text-white">
+          <p className="text-xs font-bold text-blue-200 uppercase tracking-wider">Resultado Final</p>
+          <p className="text-3xl font-bold mt-1 text-white">$ {calc.resultadoFinal.toLocaleString("es-AR")}</p>
+          <p className="text-xs text-blue-200 mt-1">Beneficio Neto</p>
         </div>
       </div>
 
@@ -174,6 +292,10 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
         <button onClick={() => setActiveTab("equipo")} className={`pb-3 px-4 font-bold text-sm transition-colors relative ${activeTab === "equipo" ? "text-axia-blue" : "text-gray-400 hover:text-gray-600"}`}>
           <span className="flex items-center gap-2"><Users size={18}/> Equipo</span>
           {activeTab === "equipo" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-axia-blue rounded-t-full"></div>}
+        </button>
+        <button onClick={() => setActiveTab("gastos")} className={`pb-3 px-4 font-bold text-sm transition-colors relative ${activeTab === "gastos" ? "text-axia-blue" : "text-gray-400 hover:text-gray-600"}`}>
+          <span className="flex items-center gap-2"><Receipt size={18}/> Gastos & Estructura</span>
+          {activeTab === "gastos" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-axia-blue rounded-t-full"></div>}
         </button>
       </div>
 
@@ -215,7 +337,7 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
       {/* Equipo */}
       {activeTab === "equipo" && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in slide-in-from-left-2 duration-300">
-          <div className="p-4 border-b border-gray-100 bg-slate-50"><p className="text-sm text-axia-gray font-medium">Análisis de horas facturables y costos imputados por persona.</p></div>
+          <div className="p-4 border-b border-gray-100 bg-slate-50"><p className="text-sm text-axia-gray font-medium">Análisis de horas facturables y costos imputados por persona vs sueldo real.</p></div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -225,9 +347,9 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
                   <th className="p-4 text-center">Hs Facturables</th>
                   <th className="p-4 text-center">% Facturable</th>
                   <th className="p-4 text-right">Tarifa/h</th>
-                  <th className="p-4 text-right">Imputado a Clientes</th>
+                  <th className="p-4 text-right">Costo Total Imputado</th>
                   <th className="p-4 text-right">Sueldo Real</th>
-                  <th className="p-4 text-right">Ajuste</th>
+                  <th className="p-4 text-right">Diferencial (Ajuste)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 text-sm">
@@ -238,7 +360,7 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
                     <td className="p-4 text-center font-medium">{e.horas_fact.toFixed(1)}</td>
                     <td className="p-4 text-center font-medium">{e.pct_fact.toFixed(0)}%</td>
                     <td className="p-4 text-right text-gray-500">$ {e.tarifa.toLocaleString("es-AR")}</td>
-                    <td className="p-4 text-right font-medium">$ {e.imputado.toLocaleString("es-AR")}</td>
+                    <td className="p-4 text-right font-medium text-axia-blue">$ {e.costo_total.toLocaleString("es-AR")}</td>
                     <td className="p-4 text-right font-medium text-rose-500">$ {e.sueldo.toLocaleString("es-AR")}</td>
                     <td className={`p-4 text-right font-bold ${e.ajuste >= 0 ? "text-emerald-600" : "text-rose-500"}`}>$ {e.ajuste.toLocaleString("es-AR")}</td>
                   </tr>
@@ -246,6 +368,168 @@ export default function RentabilidadClient({ clientes, equipo, tiempos }: { clie
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Gastos */}
+      {activeTab === "gastos" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-2 duration-300">
+          
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-slate-50">
+                <h3 className="font-bold text-axia-dark flex items-center gap-2"><Receipt size={18} className="text-axia-gray"/> Gastos Manuales (Recurrentes y Únicos)</h3>
+                <div className="flex gap-2">
+                  <button onClick={copiarRecurrentesMesPasado} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors">
+                    <Copy size={14} /> Copiar del mes pasado
+                  </button>
+                  <button onClick={() => setIsAddingGasto(!isAddingGasto)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-axia-orange text-white rounded-lg hover:bg-orange-600 transition-colors">
+                    <Plus size={14} /> Nuevo
+                  </button>
+                </div>
+              </div>
+
+              {isAddingGasto && (
+                <div className="p-4 bg-orange-50 border-b border-orange-100 flex items-end gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-axia-gray mb-1">Tipo</label>
+                    <select value={newGasto.tipo} onChange={e=>setNewGasto({...newGasto, tipo: e.target.value})} className="border border-gray-200 rounded-lg p-2 outline-none text-sm w-32">
+                      <option value="Único">Único</option>
+                      <option value="Recurrente">Recurrente</option>
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-axia-gray mb-1">Concepto</label>
+                    <input type="text" placeholder="Ej: Alquiler, Software..." value={newGasto.concepto} onChange={e=>setNewGasto({...newGasto, concepto: e.target.value})} className="border border-gray-200 rounded-lg p-2 outline-none text-sm w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-axia-gray mb-1">Monto $</label>
+                    <input type="number" placeholder="Ej: 50000" value={newGasto.monto} onChange={e=>setNewGasto({...newGasto, monto: e.target.value})} className="border border-gray-200 rounded-lg p-2 outline-none text-sm w-32" />
+                  </div>
+                  <button onClick={handleAddGasto} disabled={loadingGasto} className="px-4 py-2 bg-axia-blue text-white font-bold rounded-lg hover:bg-blue-900 transition-colors text-sm h-[38px]">
+                    {loadingGasto ? "..." : "Guardar"}
+                  </button>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-white border-b border-gray-100 text-axia-gray text-[10px] tracking-wider uppercase font-bold">
+                      <th className="p-4 w-24">Tipo</th>
+                      <th className="p-4">Concepto</th>
+                      <th className="p-4 w-32">Estado</th>
+                      <th className="p-4 text-right w-32">Monto</th>
+                      <th className="p-4 text-right w-20"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-sm">
+                    {calc.gastosMes.length === 0 ? (
+                      <tr><td colSpan={5} className="p-8 text-center text-axia-gray italic">No hay gastos registrados en este mes.</td></tr>
+                    ) : (
+                      calc.gastosMes.map((g, i) => {
+                        const isPending = g.estado === "Pendiente";
+                        return (
+                          <tr key={i} className={`hover:bg-slate-50 transition-colors ${isPending ? 'bg-amber-50/30' : ''}`}>
+                            <td className="p-4">
+                              <span className={`px-2 py-1 rounded text-[10px] font-bold ${g.tipo === 'Recurrente' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'}`}>
+                                {g.tipo}
+                              </span>
+                            </td>
+                            <td className="p-4 font-bold text-axia-dark">{g.concepto}</td>
+                            <td className="p-4">
+                              {isPending ? (
+                                <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600"><div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div> Pendiente</span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-xs font-bold text-emerald-600"><CheckCircle2 size={14}/> Confirmado</span>
+                              )}
+                            </td>
+                            <td className="p-4 text-right font-medium text-rose-500">
+                              {isPending ? (
+                                <input 
+                                  type="number" 
+                                  defaultValue={g.monto} 
+                                  onBlur={(e) => {
+                                    if(e.target.value && Number(e.target.value) !== Number(g.monto)) {
+                                      // Silently update local value if we wanted, but let's force them to click confirm to save to db
+                                      g._tempMonto = e.target.value; 
+                                    }
+                                  }}
+                                  className="w-24 text-right border-b border-amber-300 bg-transparent outline-none focus:border-amber-500" 
+                                />
+                              ) : (
+                                `$ ${Number(g.monto).toLocaleString("es-AR")}`
+                              )}
+                            </td>
+                            <td className="p-4 text-right">
+                              <div className="flex justify-end gap-2">
+                                {isPending && (
+                                  <button onClick={() => confirmarGasto(g.id, Number(g._tempMonto || g.monto))} className="text-emerald-600 hover:text-emerald-800" title="Confirmar Gasto">
+                                    <Save size={16} />
+                                  </button>
+                                )}
+                                <button onClick={() => eliminarGasto(g.id)} className="text-gray-400 hover:text-rose-500" title="Eliminar">
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                    {calc.gastosMes.length > 0 && (
+                      <tr className="bg-slate-50 font-bold border-t-2 border-gray-100">
+                        <td colSpan={3} className="p-4 text-right">Total Gastos:</td>
+                        <td className="p-4 text-right text-rose-600">$ {calc.totalGastosManuales.toLocaleString("es-AR")}</td>
+                        <td></td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 className="font-bold text-axia-dark mb-4 border-b border-gray-100 pb-3 flex items-center gap-2">🏢 Gastos de Estructura</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-axia-gray font-medium">Horas No Facturables</span>
+                  <span className="font-bold text-axia-dark">{calc.horasInternas.toFixed(1)} hs</span>
+                </div>
+                <div className="flex justify-between items-center text-rose-500">
+                  <span className="font-medium">Costo de Estructura</span>
+                  <span className="font-bold">$ {calc.costoInterno.toLocaleString("es-AR")}</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-2 leading-tight">Valorizado usando las tarifas de cada persona y sus horas cargadas en proyectos internos.</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 className="font-bold text-axia-dark mb-4 border-b border-gray-100 pb-3 flex items-center gap-2">⚖️ Diferencial Operativo</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-axia-gray font-medium">Sueldos Pagados</span>
+                  <span className="font-bold text-rose-500">
+                    $ {calc.listEquipo.filter(e => !e.es_socio).reduce((acc, e) => acc + e.sueldo, 0).toLocaleString("es-AR")}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-axia-gray font-medium">Total Costo Imputado</span>
+                  <span className="font-bold text-axia-blue">
+                    $ {calc.listEquipo.filter(e => !e.es_socio).reduce((acc, e) => acc + e.costo_total, 0).toLocaleString("es-AR")}
+                  </span>
+                </div>
+                <div className={`flex justify-between items-center pt-2 border-t border-gray-50 font-bold ${calc.totalDiferencialOperativo >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                  <span>{calc.totalDiferencialOperativo >= 0 ? "Ganancia" : "Pérdida"} Equipo</span>
+                  <span>$ {calc.totalDiferencialOperativo.toLocaleString("es-AR")}</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-2 leading-tight">Regula el costo arriba. Si cobran menos de lo que sus horas valen en el sistema, generás una ganancia operativa.</p>
+              </div>
+            </div>
+          </div>
+
         </div>
       )}
 
