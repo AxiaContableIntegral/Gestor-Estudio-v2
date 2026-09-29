@@ -9,8 +9,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        axia: {
+          blue: "#1f4668",
+          orange: "#fd6f2f",
+          teal: "#33838c",
+          cream: "#fefaee",
+          gray: "#5b5b5b",
+          dark: "#2b2b2b",
+        }
       },
     },
   },
