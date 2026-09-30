@@ -14,10 +14,15 @@ export default async function ClientesPage() {
     .select("*")
     .order("sociedad", { ascending: true });
 
-  if (errorClientes || errorSociedades) {
-    console.error("Error cargando base de datos:", errorClientes || errorSociedades);
+  const { data: equipo, error: errorEquipo } = await supabase
+    .from("equipo")
+    .select("nombre")
+    .order("nombre", { ascending: true });
+
+  if (errorClientes || errorSociedades || errorEquipo) {
+    console.error("Error cargando base de datos:", errorClientes || errorSociedades || errorEquipo);
     return <div>Error cargando la base de datos. Verificá la consola.</div>;
   }
 
-  return <ClientesClient clientes={clientes || []} sociedades={sociedades || []} />;
+  return <ClientesClient clientes={clientes || []} sociedades={sociedades || []} equipo={equipo || []} />;
 }

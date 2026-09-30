@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-export default function ClientesClient({ clientes, sociedades }: { clientes: any[], sociedades: any[] }) {
+export default function ClientesClient({ clientes, sociedades, equipo }: { clientes: any[], sociedades: any[], equipo: any[] }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"clientes" | "sociedades">("clientes");
   
@@ -19,7 +19,7 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
   // Forms state
   const [formDataCliente, setFormDataCliente] = useState({
     cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Mensual",
-    ultima_cobranza_monto: "", ultima_cobranza_periodo: ""
+    ultima_cobranza_monto: "", ultima_cobranza_periodo: "", referente: ""
   });
   
   const [formDataSociedad, setFormDataSociedad] = useState({
@@ -71,20 +71,20 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
       toast.success(editingClienteId ? "Cliente actualizado" : "Cliente guardado");
       setIsClienteModalOpen(false);
       setEditingClienteId(null);
-      setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Mensual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "" });
+      setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Mensual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "", referente: "" });
       router.refresh();
     }
   };
 
   const openNewCliente = () => {
     setEditingClienteId(null);
-    setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Mensual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "" });
+    setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Mensual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "", referente: "" });
     setIsClienteModalOpen(true);
   };
 
   const openTrabajoEventual = () => {
     setEditingClienteId(null);
-    setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Eventual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "" });
+    setFormDataCliente({ cliente: "", linea_negocio: "Estudio Contable", tipo_honorario: "Eventual", ultima_cobranza_monto: "", ultima_cobranza_periodo: "", referente: "" });
     setIsClienteModalOpen(true);
   };
 
@@ -96,6 +96,7 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
       tipo_honorario: c.tipo_honorario,
       ultima_cobranza_monto: c.ultima_cobranza_monto || "",
       ultima_cobranza_periodo: c.ultima_cobranza_periodo || "",
+      referente: c.referente || "",
     });
     setIsClienteModalOpen(true);
   };
@@ -210,6 +211,7 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
                     <th className="p-4">Cliente</th>
                     <th className="p-4">Línea de Negocio</th>
                     <th className="p-4">Tipo</th>
+                    <th className="p-4">Referente</th>
                     <th className="p-4 text-right">Honorario Mensual ($)</th>
                     <th className="p-4">Período</th>
                     <th className="p-4 text-center">Pagó?</th>
@@ -224,6 +226,7 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
                       <td className="p-4 font-bold text-axia-dark">{c.cliente}</td>
                       <td className="p-4 font-medium text-axia-gray">{c.linea_negocio}</td>
                       <td className="p-4"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-bold">{c.tipo_honorario}</span></td>
+                      <td className="p-4 font-medium text-axia-gray text-xs">{c.referente || "—"}</td>
                       <td className="p-4 font-bold text-emerald-600 text-right">{c.ultima_cobranza_monto ? `$ ${Number(c.ultima_cobranza_monto).toLocaleString("es-AR")}` : "—"}</td>
                       <td className="p-4 text-axia-gray font-medium">{c.ultima_cobranza_periodo || "—"}</td>
                       <td className="p-4 text-center">
@@ -348,6 +351,13 @@ export default function ClientesClient({ clientes, sociedades }: { clientes: any
                   <label className="block text-sm font-bold text-axia-gray mb-1.5">Período (MM/AAAA)</label>
                   <input type="text" placeholder="Ej: 09/2026" value={formDataCliente.ultima_cobranza_periodo} onChange={e => setFormDataCliente({...formDataCliente, ultima_cobranza_periodo: e.target.value})} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-axia-gray mb-1.5">Referente</label>
+                <select value={formDataCliente.referente} onChange={e => setFormDataCliente({...formDataCliente, referente: e.target.value})} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm">
+                  <option value="">Seleccionar...</option>
+                  {equipo.map((e: any) => <option key={e.nombre} value={e.nombre}>{e.nombre}</option>)}
+                </select>
               </div>
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                 <button type="button" onClick={() => setIsClienteModalOpen(false)} className="px-5 py-2 text-axia-gray font-bold hover:bg-gray-50 rounded-lg transition-colors">Cancelar</button>
