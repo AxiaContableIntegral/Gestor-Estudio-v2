@@ -233,7 +233,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
        const margen = ing - p.costo;
        const margenPct = ing > 0 ? (margen / ing) * 100 : 0;
        return { ...p, ing, margen, margenPct };
-    }).sort((a, b) => a.linea.localeCompare(b.linea) || b.margen - a.margen);
+    }).sort((a, b) => String(a.linea || "").localeCompare(String(b.linea || "")) || b.margen - a.margen);
 
     const intPorPersona = Array.from(equipoMap.values()).map(e => ({ persona: e.nombre, hsInt: e.horas_int_totales }));
 
