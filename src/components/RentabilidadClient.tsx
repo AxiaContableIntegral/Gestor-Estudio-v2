@@ -70,7 +70,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
 
     const equipoMap = new Map();
     equipo.forEach((e: any) => {
-      equipoMap.set(e.persona, {
+      equipoMap.set(e.nombre, {
         ...e,
         tarifa: Number(e.tarifa_hora),
         sueldo: Number(e.sueldo_mensual),
@@ -235,7 +235,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
        return { ...p, ing, margen, margenPct };
     }).sort((a, b) => a.linea.localeCompare(b.linea) || b.margen - a.margen);
 
-    const intPorPersona = Array.from(equipoMap.values()).map(e => ({ persona: e.persona, hsInt: e.horas_int_totales }));
+    const intPorPersona = Array.from(equipoMap.values()).map(e => ({ persona: e.nombre, hsInt: e.horas_int_totales }));
 
     // Equipo Stats
     const pEquipo = Array.from(equipoMap.values()).map(e => {
@@ -284,7 +284,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
   };
 
   const guardarEquipo = async (e: any, prop: string, val: any) => {
-    await supabase.from("equipo").update({ [prop]: val }).eq("persona", e.persona);
+    await supabase.from("equipo").update({ [prop]: val }).eq("id", e.id);
     router.refresh();
   };
 
@@ -375,7 +375,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
       for (const lineaT of lineasToClose) {
         const equipoMap = new Map();
         equipo.forEach((e: any) => {
-          equipoMap.set(e.persona, { ...e, tarifa: Number(e.tarifa_hora), sueldo: Number(e.sueldo_mensual), es_socio: e.es_socio === "Si" || e.es_socio === true, horas_fact_totales: 0, horas_fact_linea: 0, horas_int_totales: 0, horas_int_linea: 0, imputado_fact_totales: 0, imputado_fact_linea: 0, imputado_int_totales: 0, imputado_int_linea: 0 });
+          equipoMap.set(e.nombre, { ...e, tarifa: Number(e.tarifa_hora), sueldo: Number(e.sueldo_mensual), es_socio: e.es_socio === "Si" || e.es_socio === true, horas_fact_totales: 0, horas_fact_linea: 0, horas_int_totales: 0, horas_int_linea: 0, imputado_fact_totales: 0, imputado_fact_linea: 0, imputado_int_totales: 0, imputado_int_linea: 0 });
         });
 
         let horas_fact_totales = 0;
@@ -621,7 +621,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
               {calc.pEquipo.map((e:any, i:number) => (
                  <tr key={i} className="hover:bg-slate-50">
                    <td className="p-3 font-bold flex flex-col gap-1">
-                      {e.persona}
+                      {e.nombre}
                       <label className="text-[10px] flex items-center gap-1 font-normal text-gray-500"><input type="checkbox" checked={e.es_socio} onChange={ev=>guardarEquipo(e, "es_socio", ev.target.checked ? "Si" : "No")}/> Socio</label>
                    </td>
                    <td className="p-3 text-center font-medium">{e.hsTot.toFixed(1)}</td><td className="p-3 text-center">{e.horas_fact_totales.toFixed(1)}</td><td className="p-3 text-center">{e.pctF.toFixed(0)}%</td>
