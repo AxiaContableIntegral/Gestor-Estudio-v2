@@ -19,7 +19,7 @@ export default async function RentabilidadPage() {
   const { data: tareas } = await supabase.from("tareas").select("*");
   const { data: equipo } = await supabase.from("equipo").select("*");
   const { data: tiempos } = await supabase.from("tiempos_log").select("*");
-  const { data: costos } = await supabase.from("costos").select("*");
+  const { data: costos } = await supabase.from("gastos").select("*");
   const { data: parametros } = await supabase.from("parametros").select("*");
   const { data: cobranzas_unicas } = await supabase.from("cobranzas_unicas").select("*");
   const { data: cobros } = await supabase.from("cobros").select("*");

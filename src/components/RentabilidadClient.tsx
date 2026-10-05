@@ -1,25 +1,36 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useTransition } from "react";
 import { Calculator, Calendar, DollarSign, Users, Briefcase, TrendingUp, Receipt, Plus, Copy, CheckCircle2, Save, Trash2, Download, Lock, Unlock } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import * as XLSX from "xlsx";
 
 export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, costos, parametros, cobranzas_unicas, cobros, cierres }: any) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  
   const [mesSel, setMesSel] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
   const [lineaSel, setLineaSel] = useState("Todas");
-  const [activeTab, setActiveTab] = useState("cobranzas");
-  
+  const [activeTab, setLocalActiveTab] = useState(searchParams.get("tab") || "cobranzas");
+  const setActiveTab = (tab: string) => {
+    setLocalActiveTab(tab);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", tab);
+    window.history.replaceState(null, '', `${pathname}?${params.toString()}`);
+  };
+
   // Modals / State for forms
   const [isAddingCosto, setIsAddingCosto] = useState(false);
   const [newCosto, setNewCosto] = useState({ concepto: "", categoria: "Otros", moneda: "ARS", monto: "", recurrente: "No", nota: "" });
-  
+  const [isSavingCosto, setIsSavingCosto] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
   const [isAddingCobranza, setIsAddingCobranza] = useState(false);
   const [newCobranza, setNewCobranza] = useState({ fecha: mesSel + "-01", cliente_linea: "", concepto: "", monto: "", id_tarea: "" });
 
@@ -38,7 +49,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
       await supabase.from("parametros").insert([{ clave: "Tipo_Cambio_USD", valor: tcUSD }]);
     }
     toast.success("Tipo de cambio guardado");
-    router.refresh();
+    startTransition(() => router.refresh());
   };
 
   const isInterno = (cName: string) => {
@@ -61,10 +72,10 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
 
     const tMesEnriquecido = tMes.map((t: any) => {
       const tarea = tareas.find((ta: any) => ta.id === t.id_tarea);
-      return { ...t, 
+      return {
+        ...t,
         cliente: tarea ? tarea.cliente : t.cliente,
-        linea_negocio: tarea ? tarea.linea_negocio : "", 
-        persona: t.persona || (tarea ? tarea.responsable : "") 
+        persona: t.persona || (tarea ? tarea.responsable : "")
       };
     });
 
@@ -92,12 +103,12 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
     tMesEnriquecido.forEach((t: any) => {
       const h = Number(t.horas) || 0;
       const interno = isInterno(t.cliente);
-      
+
       if (!equipoMap.has(t.persona)) {
         if (t.persona && !missingTarifa.includes(t.persona)) missingTarifa.push(t.persona);
         return;
       }
-      
+
       const eInfo = equipoMap.get(t.persona);
       const costo = h * eInfo.tarifa;
 
@@ -105,17 +116,17 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
         eInfo.horas_int_totales += h;
         eInfo.imputado_int_totales += costo;
         if (lineaSel === "Todas" || t.linea_negocio === lineaSel) {
-           eInfo.horas_int_linea += h;
-           eInfo.imputado_int_linea += costo;
+          eInfo.horas_int_linea += h;
+          eInfo.imputado_int_linea += costo;
         }
       } else {
         eInfo.horas_fact_totales += h;
         horas_fact_totales += h;
         eInfo.imputado_fact_totales += costo;
         if (lineaSel === "Todas" || t.linea_negocio === lineaSel) {
-           eInfo.horas_fact_linea += h;
-           horas_fact_linea += h;
-           eInfo.imputado_fact_linea += costo;
+          eInfo.horas_fact_linea += h;
+          horas_fact_linea += h;
+          eInfo.imputado_fact_linea += costo;
         }
       }
     });
@@ -126,7 +137,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
     clientes.forEach((c: any) => {
       if (c.tipo_honorario === "Mensual" && Number(c.ultima_cobranza_monto) > 0 && !isInterno(c.cliente)) {
         if (lineaSel === "Todas" || c.linea_negocio === lineaSel) {
-           ingresosMensualesLinea += Number(c.ultima_cobranza_monto);
+          ingresosMensualesLinea += Number(c.ultima_cobranza_monto);
         }
       }
     });
@@ -134,7 +145,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
     let ingresosUnicosLinea = 0;
     cuMes.forEach((cu: any) => {
       if (lineaSel === "Todas" || cu.linea_negocio === lineaSel) {
-         ingresosUnicosLinea += Number(cu.monto);
+        ingresosUnicosLinea += Number(cu.monto);
       }
     });
 
@@ -208,7 +219,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
       const key = c.cliente + "|||" + c.linea_negocio;
       pClienteMap.set(key, { cliente: c.cliente, linea: c.linea_negocio, hm: 0, cu: 0, hs: 0, costo: 0 });
       if (c.tipo_honorario === "Mensual") {
-         pClienteMap.get(key).hm = Number(c.ultima_cobranza_monto);
+        pClienteMap.get(key).hm = Number(c.ultima_cobranza_monto);
       }
     });
     cuMes.forEach((cu: any) => {
@@ -229,23 +240,23 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
     });
 
     const pCliente = Array.from(pClienteMap.values()).map(p => {
-       const ing = p.hm + p.cu;
-       const margen = ing - p.costo;
-       const margenPct = ing > 0 ? (margen / ing) * 100 : 0;
-       return { ...p, ing, margen, margenPct };
+      const ing = p.hm + p.cu;
+      const margen = ing - p.costo;
+      const margenPct = ing > 0 ? (margen / ing) * 100 : 0;
+      return { ...p, ing, margen, margenPct };
     }).sort((a, b) => String(a.linea || "").localeCompare(String(b.linea || "")) || b.margen - a.margen);
 
     const intPorPersona = Array.from(equipoMap.values()).map(e => ({ persona: e.nombre, hsInt: e.horas_int_totales }));
 
     // Equipo Stats
     const pEquipo = Array.from(equipoMap.values()).map(e => {
-       const hsTot = e.horas_fact_totales + e.horas_int_totales;
-       const pctF = hsTot > 0 ? (e.horas_fact_totales / hsTot) * 100 : 0;
-       const impFact = e.imputado_fact_totales;
-       const impTot = e.imputado_fact_totales + e.imputado_int_totales;
-       const ajuste = e.es_socio ? 0 : impTot - e.sueldo;
-       const costoReal = (hsTot > 0 && !e.es_socio) ? e.sueldo / hsTot : 0;
-       return { ...e, hsTot, pctF, impFact, impTot, ajuste, costoReal };
+      const hsTot = e.horas_fact_totales + e.horas_int_totales;
+      const pctF = hsTot > 0 ? (e.horas_fact_totales / hsTot) * 100 : 0;
+      const impFact = e.imputado_fact_totales;
+      const impTot = e.imputado_fact_totales + e.imputado_int_totales;
+      const ajuste = e.es_socio ? 0 : impTot - e.sueldo;
+      const costoReal = (hsTot > 0 && !e.es_socio) ? e.sueldo / hsTot : 0;
+      return { ...e, hsTot, pctF, impFact, impTot, ajuste, costoReal };
     });
 
     return {
@@ -280,34 +291,44 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
     } else {
       await supabase.from("cobros").insert([payload]);
     }
-    router.refresh();
+    startTransition(() => router.refresh());
   };
 
   const guardarEquipo = async (e: any, prop: string, val: any) => {
     await supabase.from("equipo").update({ [prop]: val }).eq("id", e.id);
-    router.refresh();
+    startTransition(() => router.refresh());
   };
 
   const guardarCosto = async () => {
     if (!newCosto.concepto || !newCosto.monto) return;
-    await supabase.from("costos").insert([{ ...newCosto, mes: mesSel, monto: parseFloat(newCosto.monto) }]);
-    setIsAddingCosto(false);
-    setNewCosto({ concepto: "", categoria: "Otros", moneda: "ARS", monto: "", recurrente: "No", nota: "" });
-    router.refresh();
+    setIsSavingCosto(true);
+    await supabase.from("gastos").insert([{ ...newCosto, mes: mesSel, monto: parseFloat(newCosto.monto), tipo: "Fijo" }]);
+
+    startTransition(() => {
+      router.refresh();
+      setIsAddingCosto(false);
+      setNewCosto({ concepto: "", categoria: "Otros", moneda: "ARS", monto: "", recurrente: "No", nota: "" });
+      setIsSavingCosto(false);
+    });
   };
 
   const eliminarCosto = async (id: string) => {
-    if (confirm("Eliminar costo?")) {
-      await supabase.from("costos").delete().eq("id", id);
-      router.refresh();
-    }
+    toast("¿Eliminar costo?", {
+      action: {
+        label: "Eliminar",
+        onClick: async () => {
+          await supabase.from("gastos").delete().eq("id", id);
+          startTransition(() => router.refresh());
+        }
+      }
+    });
   };
 
   const copiarFijos = async () => {
     const [y, m] = mesSel.split("-").map(Number);
     let pm = m - 1; let py = y; if (pm === 0) { pm = 12; py--; }
     const pMes = `${py}-${String(pm).padStart(2, "0")}`;
-    
+
     const pCostos = costos.filter((c: any) => c.mes === pMes && c.recurrente === "Si");
     for (const c of pCostos) {
       if (!calc.costosMes.some((cm: any) => cm.concepto === c.concepto)) {
@@ -317,11 +338,11 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
           monto = 200000;
           nota = "Estimado: reemplazar por la reposición real";
         }
-        await supabase.from("costos").insert([{ mes: mesSel, concepto: c.concepto, categoria: c.categoria, moneda: c.moneda, monto, recurrente: "Si", nota }]);
+        await supabase.from("gastos").insert([{ mes: mesSel, concepto: c.concepto, categoria: c.categoria, moneda: c.moneda, monto, recurrente: "Si", nota, tipo: "Fijo" }]);
       }
     }
     toast.success("Costos recurrentes copiados");
-    router.refresh();
+    startTransition(() => router.refresh());
   };
 
   const guardarCobranzaUnica = async () => {
@@ -330,130 +351,146 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
       fecha: newCobranza.fecha, cliente: cName, linea_negocio: lName, concepto: newCobranza.concepto, monto: parseFloat(newCobranza.monto), id_tarea: newCobranza.id_tarea || null
     }]);
     setIsAddingCobranza(false);
-    router.refresh();
+    startTransition(() => router.refresh());
   };
 
   const eliminarCobranzaUnica = async (id: string) => {
-    if (confirm("Eliminar?")) {
-      await supabase.from("cobranzas_unicas").delete().eq("id", id);
-      router.refresh();
-    }
+    toast("¿Eliminar?", {
+      action: {
+        label: "Confirmar",
+        onClick: async () => {
+          await supabase.from("cobranzas_unicas").delete().eq("id", id);
+          startTransition(() => router.refresh());
+        }
+      }
+    });
   };
 
   const toggleCierre = async () => {
     if (calc.isMesCerrado) {
-      if (confirm("¿Reabrir el mes para todas las líneas?")) {
-        await supabase.from("cierres").delete().eq("mes", mesSel);
-        toast.success("Mes reabierto para todas las lineas");
-        router.refresh();
-      }
+      toast("¿Reabrir el mes para todas las líneas?", {
+        action: {
+          label: "Reabrir",
+          onClick: async () => {
+            await supabase.from("cierres").delete().eq("mes", mesSel);
+            toast.success("Mes reabierto para todas las lineas");
+            startTransition(() => router.refresh());
+          }
+        }
+      });
     } else {
       if (costos.some((c: any) => c.mes === mesSel && c.moneda === "USD") && !tcUSD) {
         toast.error("Falta cargar tipo de cambio USD para cerrar el mes");
         return;
       }
 
-      if (!confirm("¿Cerrar el mes y congelar resultados para todas las líneas?")) return;
-      
-      const tc = Number(tcUSD) || 0;
-      const tMes = tiempos.filter((t: any) => t.fecha_trabajo && t.fecha_trabajo.startsWith(mesSel));
-      const cuMes = cobranzas_unicas.filter((cu: any) => cu.fecha && cu.fecha.startsWith(mesSel));
-      const costosMes = costos.filter((c: any) => c.mes === mesSel);
+      toast("¿Cerrar el mes y congelar resultados para todas las líneas?", {
+        action: {
+          label: "Cerrar",
+          onClick: async () => {
+            const tc = Number(tcUSD) || 0;
+            const tMes = tiempos.filter((t: any) => t.fecha_trabajo && t.fecha_trabajo.startsWith(mesSel));
+            const cuMes = cobranzas_unicas.filter((cu: any) => cu.fecha && cu.fecha.startsWith(mesSel));
+            const costosMes = costos.filter((c: any) => c.mes === mesSel);
 
-      const tMesEnriquecido = tMes.map((t: any) => {
-        const tarea = tareas.find((ta: any) => ta.id === t.id_tarea);
-        return { ...t, 
-          cliente: tarea ? tarea.cliente : t.cliente,
-          linea_negocio: tarea ? tarea.linea_negocio : "", 
-          persona: t.persona || (tarea ? tarea.responsable : "") 
-        };
+            const tMesEnriquecido = tMes.map((t: any) => {
+              const tarea = tareas.find((ta: any) => ta.id === t.id_tarea);
+              return {
+                ...t,
+                cliente: tarea ? tarea.cliente : t.cliente,
+                linea_negocio: tarea ? tarea.linea_negocio : "",
+                persona: t.persona || (tarea ? tarea.responsable : "")
+              };
+            });
+
+            const lineasToClose = ["Todas", "Estudio Contable", "Consultoría CFO"];
+            const payloads = [];
+
+            for (const lineaT of lineasToClose) {
+              const equipoMap = new Map();
+              equipo.forEach((e: any) => {
+                equipoMap.set(e.nombre, { ...e, tarifa: Number(e.tarifa_hora), sueldo: Number(e.sueldo_mensual), es_socio: e.es_socio === "Si" || e.es_socio === true, horas_fact_totales: 0, horas_fact_linea: 0, horas_int_totales: 0, horas_int_linea: 0, imputado_fact_totales: 0, imputado_fact_linea: 0, imputado_int_totales: 0, imputado_int_linea: 0 });
+              });
+
+              let horas_fact_totales = 0;
+              let horas_fact_linea = 0;
+
+              tMesEnriquecido.forEach((t: any) => {
+                if (!equipoMap.has(t.persona)) return;
+                const h = Number(t.horas) || 0;
+                const interno = isInterno(t.cliente);
+                const eInfo = equipoMap.get(t.persona);
+                const costo = h * eInfo.tarifa;
+
+                if (interno) {
+                  eInfo.horas_int_totales += h; eInfo.imputado_int_totales += costo;
+                  if (lineaT === "Todas" || t.linea_negocio === lineaT) { eInfo.horas_int_linea += h; eInfo.imputado_int_linea += costo; }
+                } else {
+                  eInfo.horas_fact_totales += h; horas_fact_totales += h; eInfo.imputado_fact_totales += costo;
+                  if (lineaT === "Todas" || t.linea_negocio === lineaT) { eInfo.horas_fact_linea += h; horas_fact_linea += h; eInfo.imputado_fact_linea += costo; }
+                }
+              });
+
+              let propFijos = lineaT === "Todas" ? 1 : (horas_fact_totales > 0 ? (horas_fact_linea / horas_fact_totales) : 0.5);
+
+              let hmLinea = 0;
+              clientes.forEach((c: any) => {
+                if (c.tipo_honorario === "Mensual" && Number(c.ultima_cobranza_monto) > 0 && !isInterno(c.cliente)) {
+                  if (lineaT === "Todas" || c.linea_negocio === lineaT) hmLinea += Number(c.ultima_cobranza_monto);
+                }
+              });
+
+              let cuLinea = 0;
+              cuMes.forEach((cu: any) => {
+                if (lineaT === "Todas" || cu.linea_negocio === lineaT) cuLinea += Number(cu.monto);
+              });
+
+              const ingresos = hmLinea + cuLinea;
+              let costoStdLinea = 0; let costoInternasTotal = 0; let revSocioTotal = 0; let ajusteLinea = 0;
+
+              equipoMap.forEach((eInfo) => {
+                costoStdLinea += eInfo.imputado_fact_linea;
+                costoInternasTotal += eInfo.imputado_int_totales;
+                const imp_tot = eInfo.imputado_fact_totales + eInfo.imputado_int_totales;
+                const imp_lin = eInfo.imputado_fact_linea + eInfo.imputado_int_linea;
+
+                if (eInfo.es_socio) revSocioTotal += imp_tot;
+                else {
+                  let propSueldo = lineaT === "Todas" ? 1 : (eInfo.horas_fact_totales > 0 ? (eInfo.horas_fact_linea / eInfo.horas_fact_totales) : propFijos);
+                  ajusteLinea += (imp_lin - (eInfo.sueldo * propSueldo));
+                }
+              });
+
+              const costoInternasLinea = costoInternasTotal * propFijos;
+              const revSocioLinea = revSocioTotal * propFijos;
+              let fijosTotal = 0;
+              costosMes.forEach((c: any) => { let m = Number(c.monto); if (c.moneda === "USD") m *= tc; fijosTotal += m; });
+              const fijosLinea = fijosTotal * propFijos;
+
+              const margen_std = ingresos - costoStdLinea;
+              const resultado = margen_std - costoInternasLinea - ajusteLinea + revSocioLinea - fijosLinea;
+
+              payloads.push({
+                mes: mesSel, linea: lineaT,
+                mensual: hmLinea, unica: cuLinea, ingresos,
+                costo_std: costoStdLinea, margen_std,
+                costo_int: costoInternasLinea, ajuste: ajusteLinea, reversion: revSocioLinea, fijos: fijosLinea,
+                resultado, cerrado_en: new Date().toISOString()
+              });
+            }
+
+            await supabase.from("cierres").insert(payloads);
+            toast.success("Mes cerrado para todas las líneas");
+            startTransition(() => router.refresh());
+          }
+        }
       });
-
-      const lineasToClose = ["Todas", "Estudio Contable", "Consultoría CFO"];
-      const payloads = [];
-
-      for (const lineaT of lineasToClose) {
-        const equipoMap = new Map();
-        equipo.forEach((e: any) => {
-          equipoMap.set(e.nombre, { ...e, tarifa: Number(e.tarifa_hora), sueldo: Number(e.sueldo_mensual), es_socio: e.es_socio === "Si" || e.es_socio === true, horas_fact_totales: 0, horas_fact_linea: 0, horas_int_totales: 0, horas_int_linea: 0, imputado_fact_totales: 0, imputado_fact_linea: 0, imputado_int_totales: 0, imputado_int_linea: 0 });
-        });
-
-        let horas_fact_totales = 0;
-        let horas_fact_linea = 0;
-
-        tMesEnriquecido.forEach((t: any) => {
-          if (!equipoMap.has(t.persona)) return;
-          const h = Number(t.horas) || 0;
-          const interno = isInterno(t.cliente);
-          const eInfo = equipoMap.get(t.persona);
-          const costo = h * eInfo.tarifa;
-
-          if (interno) {
-            eInfo.horas_int_totales += h; eInfo.imputado_int_totales += costo;
-            if (lineaT === "Todas" || t.linea_negocio === lineaT) { eInfo.horas_int_linea += h; eInfo.imputado_int_linea += costo; }
-          } else {
-            eInfo.horas_fact_totales += h; horas_fact_totales += h; eInfo.imputado_fact_totales += costo;
-            if (lineaT === "Todas" || t.linea_negocio === lineaT) { eInfo.horas_fact_linea += h; horas_fact_linea += h; eInfo.imputado_fact_linea += costo; }
-          }
-        });
-
-        let propFijos = lineaT === "Todas" ? 1 : (horas_fact_totales > 0 ? (horas_fact_linea / horas_fact_totales) : 0.5);
-
-        let hmLinea = 0;
-        clientes.forEach((c: any) => {
-          if (c.tipo_honorario === "Mensual" && Number(c.ultima_cobranza_monto) > 0 && !isInterno(c.cliente)) {
-            if (lineaT === "Todas" || c.linea_negocio === lineaT) hmLinea += Number(c.ultima_cobranza_monto);
-          }
-        });
-
-        let cuLinea = 0;
-        cuMes.forEach((cu: any) => {
-          if (lineaT === "Todas" || cu.linea_negocio === lineaT) cuLinea += Number(cu.monto);
-        });
-
-        const ingresos = hmLinea + cuLinea;
-        let costoStdLinea = 0; let costoInternasTotal = 0; let revSocioTotal = 0; let ajusteLinea = 0;
-
-        equipoMap.forEach((eInfo) => {
-          costoStdLinea += eInfo.imputado_fact_linea;
-          costoInternasTotal += eInfo.imputado_int_totales;
-          const imp_tot = eInfo.imputado_fact_totales + eInfo.imputado_int_totales;
-          const imp_lin = eInfo.imputado_fact_linea + eInfo.imputado_int_linea;
-
-          if (eInfo.es_socio) revSocioTotal += imp_tot;
-          else {
-            let propSueldo = lineaT === "Todas" ? 1 : (eInfo.horas_fact_totales > 0 ? (eInfo.horas_fact_linea / eInfo.horas_fact_totales) : propFijos);
-            ajusteLinea += (imp_lin - (eInfo.sueldo * propSueldo));
-          }
-        });
-
-        const costoInternasLinea = costoInternasTotal * propFijos;
-        const revSocioLinea = revSocioTotal * propFijos;
-        let fijosTotal = 0;
-        costosMes.forEach((c: any) => { let m = Number(c.monto); if (c.moneda === "USD") m *= tc; fijosTotal += m; });
-        const fijosLinea = fijosTotal * propFijos;
-
-        const margen_std = ingresos - costoStdLinea;
-        const resultado = margen_std - costoInternasLinea - ajusteLinea + revSocioLinea - fijosLinea;
-
-        payloads.push({
-           mes: mesSel, linea: lineaT,
-           mensual: hmLinea, unica: cuLinea, ingresos,
-           costo_std: costoStdLinea, margen_std,
-           costo_int: costoInternasLinea, ajuste: ajusteLinea, reversion: revSocioLinea, fijos: fijosLinea,
-           resultado, cerrado_en: new Date().toISOString()
-        });
-      }
-      
-      await supabase.from("cierres").insert(payloads);
-      toast.success("Mes cerrado para todas las líneas");
-      router.refresh();
     }
   };
 
   const exportExcel = () => {
     const wb = XLSX.utils.book_new();
-    
+
     const wsER = XLSX.utils.json_to_sheet([
       { Concepto: "1. Honorarios mensuales", Monto: calc.ingresosMensualesLinea },
       { Concepto: "2. Cobranzas únicas", Monto: calc.ingresosUnicosLinea },
@@ -488,7 +525,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
 
   const renderMoney = (val: number) => {
     const isNeg = val < 0;
-    return <span className={isNeg ? "text-rose-600" : ""}>{isNeg ? "-" : ""}$ {Math.abs(val).toLocaleString("es-AR", {maximumFractionDigits:0})}</span>;
+    return <span className={isNeg ? "text-rose-600" : ""}>{isNeg ? "-" : ""}$ {Math.abs(val).toLocaleString("es-AR", { maximumFractionDigits: 0 })}</span>;
   };
 
   const renderPct = (val: number, base: number) => {
@@ -501,7 +538,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-axia-blue">Gestor: Estado de Resultados</h1>
         <div className="flex gap-2">
-           <button onClick={exportExcel} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold"><Download size={18}/> Excel</button>
+          <button onClick={exportExcel} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold"><Download size={18} /> Excel</button>
         </div>
       </div>
 
@@ -521,14 +558,14 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
           </div>
         </div>
         <div>
-           <button onClick={toggleCierre} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-white text-sm ${calc.isMesCerrado ? 'bg-amber-500' : 'bg-axia-blue'}`}>
-             {calc.isMesCerrado ? <><Unlock size={18}/> Reabrir Mes</> : <><Lock size={18}/> Cerrar Mes</>}
-           </button>
+          <button onClick={toggleCierre} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-white text-sm ${calc.isMesCerrado ? 'bg-amber-500' : 'bg-axia-blue'}`}>
+            {calc.isMesCerrado ? <><Unlock size={18} /> Reabrir Mes</> : <><Lock size={18} /> Cerrar Mes</>}
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100"><p className="text-xs font-bold text-axia-gray uppercase">Ingresos</p><p className="text-2xl font-bold text-axia-blue">{calc.isCerradoObj ? renderMoney(calc.isCerradoObj.ingresos) : renderMoney(calc.ingresos)}</p><p className="text-xs text-axia-gray mt-1">{calc.isMesCerrado ? "Cerrado" : `${renderPct(calc.pEquipo.reduce((a,b)=>a+b.horas_fact_totales,0), calc.pEquipo.reduce((a,b)=>a+b.hsTot,0))} hs facturables`}</p></div>
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100"><p className="text-xs font-bold text-axia-gray uppercase">Ingresos</p><p className="text-2xl font-bold text-axia-blue">{calc.isCerradoObj ? renderMoney(calc.isCerradoObj.ingresos) : renderMoney(calc.ingresos)}</p><p className="text-xs text-axia-gray mt-1">{calc.isMesCerrado ? "Cerrado" : `${renderPct(calc.pEquipo.reduce((a, b) => a + b.horas_fact_totales, 0), calc.pEquipo.reduce((a, b) => a + b.hsTot, 0))} hs facturables`}</p></div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100"><p className="text-xs font-bold text-axia-gray uppercase">Margen Bruto Std</p><p className="text-2xl font-bold">{calc.isCerradoObj ? renderMoney(calc.isCerradoObj.margen_std) : renderMoney(calc.margenBruto)}</p><p className="text-xs text-axia-gray mt-1">{renderPct(calc.isCerradoObj ? calc.isCerradoObj.margen_std : calc.margenBruto, calc.isCerradoObj ? calc.isCerradoObj.ingresos : calc.ingresos)} s/ ingresos</p></div>
         <div className="bg-axia-blue rounded-xl p-5 shadow-sm text-white md:col-span-2"><p className="text-xs font-bold text-blue-200 uppercase">Resultado Antes de Retiro</p><p className="text-2xl font-bold">{calc.isCerradoObj ? renderMoney(calc.isCerradoObj.resultado) : renderMoney(calc.resultado)}</p><p className="text-xs text-blue-200 mt-1">{renderPct(calc.isCerradoObj ? calc.isCerradoObj.resultado : calc.resultado, calc.isCerradoObj ? calc.isCerradoObj.ingresos : calc.ingresos)} s/ ingresos</p></div>
       </div>
@@ -553,7 +590,7 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
       </div>
 
       <div className="flex gap-4 mb-6 border-b border-gray-200">
-        {[ {id:"cobranzas", label:"Control de cobranzas"}, {id:"cliente", label:"Por cliente"}, {id:"equipo", label:"Equipo"}, {id:"unicas", label:"Cobranzas únicas"}, {id:"fijos", label:"Costos fijos"} ].map(t => (
+        {[{ id: "cobranzas", label: "Control de cobranzas" }, { id: "cliente", label: "Por cliente" }, { id: "equipo", label: "Equipo" }, { id: "unicas", label: "Cobranzas únicas" }, { id: "fijos", label: "Costos fijos" }].map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} className={`pb-3 px-4 font-bold text-sm transition-colors relative ${activeTab === t.id ? "text-axia-blue" : "text-gray-400 hover:text-gray-600"}`}>
             {t.label} {activeTab === t.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-axia-blue rounded-t-full"></div>}
           </button>
@@ -562,54 +599,54 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
 
       {activeTab === "cobranzas" && (
         <div className="space-y-4">
-           <div className="grid grid-cols-4 gap-4">
-              <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><p className="text-xs text-axia-gray uppercase font-bold">Devengado Mes</p><p className="text-xl font-bold">{renderMoney(calc.totDevengado)}</p></div>
-              <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><p className="text-xs text-axia-gray uppercase font-bold">Cobrado Mes</p><p className="text-xl font-bold text-emerald-600">{renderMoney(calc.totCobrado)}</p></div>
-              <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><p className="text-xs text-axia-gray uppercase font-bold">Pendiente Mes</p><p className="text-xl font-bold text-amber-500">{renderMoney(calc.totPendiente)}</p><p className="text-xs text-gray-400 mt-1">{renderPct(calc.totCobrado, calc.totDevengado)} cobrado</p></div>
-              <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><p className="text-xs text-axia-gray uppercase font-bold">Pendiente Acumulado</p><p className="text-xl font-bold text-rose-500">{renderMoney(calc.acumPendiente)}</p></div>
-           </div>
-           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-             <table className="w-full text-left text-sm">
-               <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Cliente</th><th className="p-3">Linea</th><th className="p-3">Concepto</th><th className="p-3 text-right">Devengado</th><th className="p-3 text-center">¿Pagó?</th><th className="p-3">Fecha</th><th className="p-3"></th></tr></thead>
-               <tbody className="divide-y divide-gray-50">
-                 {calc.ctrlCobranzas.map((c, i) => (
-                    <tr key={i} className="hover:bg-slate-50">
-                      <td className="p-3 font-bold">{c.cliente}</td><td className="p-3 text-gray-500">{c.linea_negocio}</td><td className="p-3">{c.concepto}</td><td className="p-3 text-right font-medium">{renderMoney(c.devengado)}</td>
-                      <td className="p-3 text-center"><input type="checkbox" checked={c.cobrado === "Si" || c.cobrado === true} onChange={e => { c.cobrado = e.target.checked; }} className="w-4 h-4 cursor-pointer"/></td>
-                      <td className="p-3"><input type="date" defaultValue={c.fecha || ""} onChange={e => c.fecha = e.target.value} className="border p-1 rounded text-xs"/></td>
-                      <td className="p-3"><button onClick={() => guardarCobro(c, c.cobrado === "Si" || c.cobrado === true, c.fecha)} className="text-axia-blue font-bold text-xs hover:underline">Guardar</button></td>
-                    </tr>
-                 ))}
-               </tbody>
-             </table>
-           </div>
+          <div className="grid grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><p className="text-xs text-axia-gray uppercase font-bold">Devengado Mes</p><p className="text-xl font-bold">{renderMoney(calc.totDevengado)}</p></div>
+            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><p className="text-xs text-axia-gray uppercase font-bold">Cobrado Mes</p><p className="text-xl font-bold text-emerald-600">{renderMoney(calc.totCobrado)}</p></div>
+            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><p className="text-xs text-axia-gray uppercase font-bold">Pendiente Mes</p><p className="text-xl font-bold text-amber-500">{renderMoney(calc.totPendiente)}</p><p className="text-xs text-gray-400 mt-1">{renderPct(calc.totCobrado, calc.totDevengado)} cobrado</p></div>
+            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"><p className="text-xs text-axia-gray uppercase font-bold">Pendiente Acumulado</p><p className="text-xl font-bold text-rose-500">{renderMoney(calc.acumPendiente)}</p></div>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Cliente</th><th className="p-3">Linea</th><th className="p-3">Concepto</th><th className="p-3 text-right">Devengado</th><th className="p-3 text-center">¿Pagó?</th><th className="p-3">Fecha</th><th className="p-3"></th></tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {calc.ctrlCobranzas.map((c, i) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold">{c.cliente}</td><td className="p-3 text-gray-500">{c.linea_negocio}</td><td className="p-3">{c.concepto}</td><td className="p-3 text-right font-medium">{renderMoney(c.devengado)}</td>
+                    <td className="p-3 text-center"><input type="checkbox" checked={c.cobrado === "Si" || c.cobrado === true} onChange={e => { c.cobrado = e.target.checked; }} className="w-4 h-4 cursor-pointer" /></td>
+                    <td className="p-3"><input type="date" defaultValue={c.fecha || ""} onChange={e => c.fecha = e.target.value} className="border p-1 rounded text-xs" /></td>
+                    <td className="p-3"><button onClick={() => guardarCobro(c, c.cobrado === "Si" || c.cobrado === true, c.fecha)} className="text-axia-blue font-bold text-xs hover:underline">Guardar</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {activeTab === "cliente" && (
         <div className="space-y-6">
-           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-             <table className="w-full text-left text-sm">
-               <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Cliente</th><th className="p-3">Línea</th><th className="p-3 text-right">Mensual</th><th className="p-3 text-right">Únicas</th><th className="p-3 text-right">Ingresos</th><th className="p-3 text-center">Hs</th><th className="p-3 text-right">Costo Hs</th><th className="p-3 text-right">Margen</th><th className="p-3 text-right">%</th></tr></thead>
-               <tbody className="divide-y divide-gray-50">
-                 {calc.pCliente.map((c:any, i:number) => (
-                    <tr key={i} className="hover:bg-slate-50">
-                      <td className="p-3 font-bold">{c.cliente}</td><td className="p-3 text-gray-500">{c.linea}</td><td className="p-3 text-right">{renderMoney(c.hm)}</td><td className="p-3 text-right">{renderMoney(c.cu)}</td><td className="p-3 text-right font-bold text-axia-blue">{renderMoney(c.ing)}</td><td className="p-3 text-center font-medium">{c.hs.toFixed(1)}</td><td className="p-3 text-right text-rose-500">{renderMoney(c.costo)}</td><td className="p-3 text-right font-bold">{renderMoney(c.margen)}</td><td className="p-3 text-right font-bold">{c.margenPct.toFixed(0)}%</td>
-                    </tr>
-                 ))}
-               </tbody>
-             </table>
-           </div>
-           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden w-1/2">
-             <div className="p-3 bg-slate-50 border-b border-gray-100 font-bold text-sm text-axia-gray">Trabajo Interno por Persona</div>
-             <table className="w-full text-sm">
-               <tbody className="divide-y divide-gray-50">
-                 {calc.intPorPersona.filter((i:any) => i.hsInt > 0).map((p:any, idx:number) => (
-                   <tr key={idx}><td className="p-3 font-medium">{p.persona}</td><td className="p-3 text-right text-amber-600 font-bold">{p.hsInt.toFixed(1)} hs</td></tr>
-                 ))}
-               </tbody>
-             </table>
-           </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Cliente</th><th className="p-3">Línea</th><th className="p-3 text-right">Mensual</th><th className="p-3 text-right">Únicas</th><th className="p-3 text-right">Ingresos</th><th className="p-3 text-center">Hs</th><th className="p-3 text-right">Costo Hs</th><th className="p-3 text-right">Margen</th><th className="p-3 text-right">%</th></tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {calc.pCliente.map((c: any, i: number) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold">{c.cliente}</td><td className="p-3 text-gray-500">{c.linea}</td><td className="p-3 text-right">{renderMoney(c.hm)}</td><td className="p-3 text-right">{renderMoney(c.cu)}</td><td className="p-3 text-right font-bold text-axia-blue">{renderMoney(c.ing)}</td><td className="p-3 text-center font-medium">{c.hs.toFixed(1)}</td><td className="p-3 text-right text-rose-500">{renderMoney(c.costo)}</td><td className="p-3 text-right font-bold">{renderMoney(c.margen)}</td><td className="p-3 text-right font-bold">{c.margenPct.toFixed(0)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden w-1/2">
+            <div className="p-3 bg-slate-50 border-b border-gray-100 font-bold text-sm text-axia-gray">Trabajo Interno por Persona</div>
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-gray-50">
+                {calc.intPorPersona.filter((i: any) => i.hsInt > 0).map((p: any, idx: number) => (
+                  <tr key={idx}><td className="p-3 font-medium">{p.persona}</td><td className="p-3 text-right text-amber-600 font-bold">{p.hsInt.toFixed(1)} hs</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -618,18 +655,18 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Persona</th><th className="p-3 text-center">Hs Tot</th><th className="p-3 text-center">Hs Fact</th><th className="p-3 text-center">% Fact</th><th className="p-3 text-right">Tarifa/h</th><th className="p-3 text-right">Imp Clientes</th><th className="p-3 text-right">Sueldo</th><th className="p-3 text-right">Ajuste</th><th className="p-3 text-right">Costo Real/h</th></tr></thead>
             <tbody className="divide-y divide-gray-50">
-              {calc.pEquipo.map((e:any, i:number) => (
-                 <tr key={i} className="hover:bg-slate-50">
-                   <td className="p-3 font-bold flex flex-col gap-1">
-                      {e.nombre}
-                      <label className="text-[10px] flex items-center gap-1 font-normal text-gray-500"><input type="checkbox" checked={e.es_socio} onChange={ev=>guardarEquipo(e, "es_socio", ev.target.checked ? "Si" : "No")}/> Socio</label>
-                   </td>
-                   <td className="p-3 text-center font-medium">{e.hsTot.toFixed(1)}</td><td className="p-3 text-center">{e.horas_fact_totales.toFixed(1)}</td><td className="p-3 text-center">{e.pctF.toFixed(0)}%</td>
-                   <td className="p-3 text-right"><input type="number" defaultValue={e.tarifa} onBlur={ev=>guardarEquipo(e, "tarifa_hora", ev.target.value)} className="w-20 text-right border-b" /></td>
-                   <td className="p-3 text-right">{renderMoney(e.impFact)}</td>
-                   <td className="p-3 text-right"><input type="number" defaultValue={e.sueldo} onBlur={ev=>guardarEquipo(e, "sueldo_mensual", ev.target.value)} className="w-24 text-right border-b" /></td>
-                   <td className="p-3 text-right font-bold">{e.es_socio ? "-" : renderMoney(e.ajuste)}</td><td className="p-3 text-right font-bold text-rose-500">{e.es_socio ? "-" : renderMoney(e.costoReal)}</td>
-                 </tr>
+              {calc.pEquipo.map((e: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50">
+                  <td className="p-3 font-bold flex flex-col gap-1">
+                    {e.nombre}
+                    <label className="text-[10px] flex items-center gap-1 font-normal text-gray-500"><input type="checkbox" checked={e.es_socio} onChange={ev => guardarEquipo(e, "es_socio", ev.target.checked ? "Si" : "No")} /> Socio</label>
+                  </td>
+                  <td className="p-3 text-center font-medium">{e.hsTot.toFixed(1)}</td><td className="p-3 text-center">{e.horas_fact_totales.toFixed(1)}</td><td className="p-3 text-center">{e.pctF.toFixed(0)}%</td>
+                  <td className="p-3 text-right"><input type="number" defaultValue={e.tarifa} onBlur={ev => guardarEquipo(e, "tarifa_hora", ev.target.value)} className="w-20 text-right border-b" /></td>
+                  <td className="p-3 text-right">{renderMoney(e.impFact)}</td>
+                  <td className="p-3 text-right"><input type="number" defaultValue={e.sueldo} onBlur={ev => guardarEquipo(e, "sueldo_mensual", ev.target.value)} className="w-24 text-right border-b" /></td>
+                  <td className="p-3 text-right font-bold">{e.es_socio ? "-" : renderMoney(e.ajuste)}</td><td className="p-3 text-right font-bold text-rose-500">{e.es_socio ? "-" : renderMoney(e.costoReal)}</td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -638,105 +675,117 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
 
       {activeTab === "unicas" && (
         <div className="space-y-4">
-           <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-             <h3 className="font-bold">Cobranzas Eventuales</h3>
-             <button onClick={() => setIsAddingCobranza(!isAddingCobranza)} disabled={calc.isMesCerrado} className="bg-axia-orange text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Plus size={16}/> Nueva</button>
-           </div>
-           {isAddingCobranza && (
-             <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 flex gap-3 items-end">
-                <div><label className="text-xs font-bold block mb-1">Fecha</label><input type="date" value={newCobranza.fecha} onChange={e=>setNewCobranza({...newCobranza, fecha: e.target.value})} className="border p-2 rounded w-32 text-sm"/></div>
-                <div>
-                   <label className="text-xs font-bold block mb-1">Cliente / Línea</label>
-                   <select value={newCobranza.cliente_linea} onChange={e=>setNewCobranza({...newCobranza, cliente_linea: e.target.value})} className="border p-2 rounded text-sm w-48">
-                      <option value="">Seleccione...</option>
-                      {clientes.map((c:any, i:number) => !isInterno(c.cliente) && <option key={i} value={c.cliente+"|||"+c.linea_negocio}>{c.cliente} - {c.linea_negocio}</option>)}
-                   </select>
-                </div>
-                <div><label className="text-xs font-bold block mb-1">Concepto</label><input type="text" value={newCobranza.concepto} onChange={e=>setNewCobranza({...newCobranza, concepto: e.target.value})} className="border p-2 rounded w-40 text-sm"/></div>
-                <div><label className="text-xs font-bold block mb-1">Monto $</label><input type="number" value={newCobranza.monto} onChange={e=>setNewCobranza({...newCobranza, monto: e.target.value})} className="border p-2 rounded w-28 text-sm"/></div>
-                <button onClick={guardarCobranzaUnica} className="bg-axia-blue text-white px-4 py-2 rounded font-bold text-sm">Guardar</button>
-             </div>
-           )}
-           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-             <table className="w-full text-left text-sm">
-               <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Fecha</th><th className="p-3">Cliente</th><th className="p-3">Línea</th><th className="p-3">Concepto</th><th className="p-3 text-right">Monto</th><th className="p-3 w-10"></th></tr></thead>
-               <tbody className="divide-y divide-gray-50">
-                 {calc.cuMes.map((cu:any, i:number) => (
-                    <tr key={i} className="hover:bg-slate-50"><td className="p-3">{cu.fecha}</td><td className="p-3 font-bold">{cu.cliente}</td><td className="p-3 text-gray-500">{cu.linea_negocio}</td><td className="p-3">{cu.concepto}</td><td className="p-3 text-right font-medium">{renderMoney(cu.monto)}</td><td className="p-3"><button onClick={()=>eliminarCobranzaUnica(cu.id)} disabled={calc.isMesCerrado} className="text-rose-400 hover:text-rose-600"><Trash2 size={16}/></button></td></tr>
-                 ))}
-                 <tr className="bg-slate-50 font-bold"><td colSpan={4} className="p-3 text-right">Total:</td><td className="p-3 text-right text-axia-blue">{renderMoney(calc.cuMes.reduce((a:any, b:any)=>a+Number(b.monto), 0))}</td><td></td></tr>
-               </tbody>
-             </table>
-           </div>
+          <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <h3 className="font-bold">Cobranzas Eventuales</h3>
+            <button onClick={() => setIsAddingCobranza(!isAddingCobranza)} disabled={calc.isMesCerrado} className="bg-axia-orange text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Plus size={16} /> Nueva</button>
+          </div>
+          {isAddingCobranza && (
+            <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 flex gap-3 items-end">
+              <div><label className="text-xs font-bold block mb-1">Fecha</label><input type="date" value={newCobranza.fecha} onChange={e => setNewCobranza({ ...newCobranza, fecha: e.target.value })} className="border p-2 rounded w-32 text-sm" /></div>
+              <div>
+                <label className="text-xs font-bold block mb-1">Cliente / Línea</label>
+                <select value={newCobranza.cliente_linea} onChange={e => setNewCobranza({ ...newCobranza, cliente_linea: e.target.value })} className="border p-2 rounded text-sm w-48">
+                  <option value="">Seleccione...</option>
+                  {clientes.map((c: any, i: number) => !isInterno(c.cliente) && <option key={i} value={c.cliente + "|||" + c.linea_negocio}>{c.cliente} - {c.linea_negocio}</option>)}
+                </select>
+              </div>
+              <div><label className="text-xs font-bold block mb-1">Concepto</label><input type="text" value={newCobranza.concepto} onChange={e => setNewCobranza({ ...newCobranza, concepto: e.target.value })} className="border p-2 rounded w-40 text-sm" /></div>
+              <div><label className="text-xs font-bold block mb-1">Monto $</label><input type="number" value={newCobranza.monto} onChange={e => setNewCobranza({ ...newCobranza, monto: e.target.value })} className="border p-2 rounded w-28 text-sm" /></div>
+              <button onClick={guardarCobranzaUnica} className="bg-axia-blue text-white px-4 py-2 rounded font-bold text-sm">Guardar</button>
+            </div>
+          )}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Fecha</th><th className="p-3">Cliente</th><th className="p-3">Línea</th><th className="p-3">Concepto</th><th className="p-3 text-right">Monto</th><th className="p-3 w-10"></th></tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {calc.cuMes.map((cu: any, i: number) => (
+                  <tr key={i} className="hover:bg-slate-50"><td className="p-3">{cu.fecha}</td><td className="p-3 font-bold">{cu.cliente}</td><td className="p-3 text-gray-500">{cu.linea_negocio}</td><td className="p-3">{cu.concepto}</td><td className="p-3 text-right font-medium">{renderMoney(cu.monto)}</td><td className="p-3"><button onClick={() => eliminarCobranzaUnica(cu.id)} disabled={calc.isMesCerrado} className="text-rose-400 hover:text-rose-600"><Trash2 size={16} /></button></td></tr>
+                ))}
+                <tr className="bg-slate-50 font-bold"><td colSpan={4} className="p-3 text-right">Total:</td><td className="p-3 text-right text-axia-blue">{renderMoney(calc.cuMes.reduce((a: any, b: any) => a + Number(b.monto), 0))}</td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {activeTab === "fijos" && (
         <div className="space-y-4">
-           <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-             <div className="flex items-center gap-4">
-               <h3 className="font-bold">Costos Fijos del Mes</h3>
-               <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-                 <span className="text-xs font-bold text-slate-600">Tipo de Cambio USD:</span>
-                 <input type="number" value={tcUSD} onChange={e=>setTcUSD(e.target.value)} disabled={calc.isMesCerrado} className="w-20 bg-white border border-slate-300 rounded p-1 text-xs text-right"/>
-                 {!calc.isMesCerrado && <button onClick={saveTC} className="text-axia-blue"><Save size={16}/></button>}
-               </div>
-             </div>
-             <div className="flex gap-2">
-               <button onClick={copiarFijos} disabled={calc.isMesCerrado} className="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Copy size={16}/> Copiar Recurrentes</button>
-               <button onClick={() => setIsAddingCosto(!isAddingCosto)} disabled={calc.isMesCerrado} className="bg-axia-orange text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Plus size={16}/> Nuevo</button>
-             </div>
-           </div>
-           {isAddingCosto && (
-             <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 grid grid-cols-6 gap-3 items-end">
-                <div className="col-span-2"><label className="text-xs font-bold block mb-1">Concepto</label><input type="text" value={newCosto.concepto} onChange={e=>setNewCosto({...newCosto, concepto: e.target.value})} className="border p-2 rounded w-full text-sm"/></div>
-                <div>
-                   <label className="text-xs font-bold block mb-1">Categoría</label>
-                   <select value={newCosto.categoria} onChange={e=>setNewCosto({...newCosto, categoria: e.target.value})} className="border p-2 rounded w-full text-sm">
-                      <option>Alquiler</option><option>Sistemas</option><option>Oficina</option><option>Otros</option>
-                   </select>
+          <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-4">
+              <h3 className="font-bold">Costos Fijos del Mes</h3>
+              <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                <span className="text-xs font-bold text-slate-600">Tipo de Cambio USD:</span>
+                <input type="number" value={tcUSD} onChange={e => setTcUSD(e.target.value)} disabled={calc.isMesCerrado} className="w-20 bg-white border border-slate-300 rounded p-1 text-xs text-right" />
+                {!calc.isMesCerrado && <button onClick={saveTC} className="text-axia-blue"><Save size={16} /></button>}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={copiarFijos} disabled={calc.isMesCerrado} className="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Copy size={16} /> Copiar Recurrentes</button>
+              <button onClick={() => setIsAddingCosto(!isAddingCosto)} disabled={calc.isMesCerrado} className="bg-axia-orange text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Plus size={16} /> Nuevo</button>
+            </div>
+          </div>
+          {isAddingCosto && (
+            <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 grid grid-cols-6 gap-3 items-end">
+              <div className="col-span-2"><label className="text-xs font-bold block mb-1">Concepto</label><input type="text" value={newCosto.concepto} onChange={e => setNewCosto({ ...newCosto, concepto: e.target.value })} className="border p-2 rounded w-full text-sm" /></div>
+              <div>
+                <label className="text-xs font-bold block mb-1">Categoría</label>
+                <select value={newCosto.categoria} onChange={e => setNewCosto({ ...newCosto, categoria: e.target.value })} className="border p-2 rounded w-full text-sm">
+                  <option>Alquiler</option><option>Sistemas</option><option>Oficina</option><option>Otros</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold block mb-1">Recurrente</label>
+                <select value={newCosto.recurrente} onChange={e => setNewCosto({ ...newCosto, recurrente: e.target.value })} className="border p-2 rounded w-full text-sm">
+                  <option>Si</option><option>No</option>
+                </select>
+              </div>
+              <div className="flex gap-1">
+                <div className="w-1/3">
+                  <label className="text-xs font-bold block mb-1">Moneda</label>
+                  <select value={newCosto.moneda} onChange={e => setNewCosto({ ...newCosto, moneda: e.target.value })} className="border p-2 rounded w-full text-sm">
+                    <option>ARS</option><option>USD</option>
+                  </select>
                 </div>
-                <div>
-                   <label className="text-xs font-bold block mb-1">Recurrente</label>
-                   <select value={newCosto.recurrente} onChange={e=>setNewCosto({...newCosto, recurrente: e.target.value})} className="border p-2 rounded w-full text-sm">
-                      <option>Si</option><option>No</option>
-                   </select>
+                <div className="w-2/3">
+                  <label className="text-xs font-bold block mb-1">Monto</label>
+                  <input type="number" value={newCosto.monto} onChange={e => setNewCosto({ ...newCosto, monto: e.target.value })} className="border p-2 rounded w-full text-sm" />
                 </div>
-                <div className="flex gap-1">
-                   <div className="w-1/3">
-                      <label className="text-xs font-bold block mb-1">Moneda</label>
-                      <select value={newCosto.moneda} onChange={e=>setNewCosto({...newCosto, moneda: e.target.value})} className="border p-2 rounded w-full text-sm">
-                         <option>ARS</option><option>USD</option>
-                      </select>
-                   </div>
-                   <div className="w-2/3">
-                      <label className="text-xs font-bold block mb-1">Monto</label>
-                      <input type="number" value={newCosto.monto} onChange={e=>setNewCosto({...newCosto, monto: e.target.value})} className="border p-2 rounded w-full text-sm"/>
-                   </div>
-                </div>
-                <button onClick={guardarCosto} className="bg-axia-blue text-white px-4 py-2 rounded font-bold text-sm h-[38px]">Guardar</button>
-                <div className="col-span-6"><input type="text" placeholder="Nota opcional..." value={newCosto.nota} onChange={e=>setNewCosto({...newCosto, nota: e.target.value})} className="border p-2 rounded w-full text-sm"/></div>
-             </div>
-           )}
-           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-             <table className="w-full text-left text-sm">
-               <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Rec</th><th className="p-3">Categoría</th><th className="p-3">Concepto</th><th className="p-3">Nota</th><th className="p-3 text-right">Monto ARS</th><th className="p-3 text-right">Monto USD</th><th className="p-3 w-10"></th></tr></thead>
-               <tbody className="divide-y divide-gray-50">
-                 {calc.costosMes.map((c:any, i:number) => (
-                    <tr key={i} className="hover:bg-slate-50">
-                      <td className="p-3">{c.recurrente === "Si" ? "🔄" : ""}</td>
-                      <td className="p-3 text-gray-500">{c.categoria}</td>
-                      <td className="p-3 font-bold">{c.concepto}</td>
-                      <td className="p-3 text-xs text-gray-400">{c.nota}</td>
-                      <td className="p-3 text-right font-medium">{c.moneda === "ARS" ? renderMoney(c.monto) : ""}</td>
-                      <td className="p-3 text-right font-medium text-emerald-600">{c.moneda === "USD" ? `US$ ${c.monto}` : ""}</td>
-                      <td className="p-3"><button onClick={()=>eliminarCosto(c.id)} disabled={calc.isMesCerrado} className="text-rose-400 hover:text-rose-600"><Trash2 size={16}/></button></td>
-                    </tr>
-                 ))}
-                 <tr className="bg-slate-50 font-bold"><td colSpan={4} className="p-3 text-right text-gray-500">Total en Pesos:</td><td colSpan={2} className="p-3 text-right text-rose-500">{renderMoney(calc.costosMes.reduce((a:any, b:any) => a + (b.moneda==="USD" ? Number(b.monto)*Number(tcUSD) : Number(b.monto)), 0))}</td><td></td></tr>
-               </tbody>
-             </table>
-           </div>
+              </div>
+              <button onClick={guardarCosto} disabled={isSavingCosto || isPending} className="bg-axia-blue text-white px-4 py-2 rounded font-bold text-sm h-[38px] disabled:opacity-50">
+                {isSavingCosto ? "Guardando..." : "Guardar"}
+              </button>
+              <div className="col-span-6"><input type="text" placeholder="Nota opcional..." value={newCosto.nota} onChange={e => setNewCosto({ ...newCosto, nota: e.target.value })} className="border p-2 rounded w-full text-sm" /></div>
+            </div>
+          )}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Rec</th><th className="p-3">Categoría</th><th className="p-3">Concepto</th><th className="p-3">Nota</th><th className="p-3 text-right">Monto ARS</th><th className="p-3 text-right">Monto USD</th><th className="p-3 w-10"></th></tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {calc.costosMes.map((c: any, i: number) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="p-3">{c.recurrente === "Si" ? "🔄" : ""}</td>
+                    <td className="p-3 text-gray-500">{c.categoria}</td>
+                    <td className="p-3 font-bold">{c.concepto}</td>
+                    <td className="p-3 text-xs text-gray-400">{c.nota}</td>
+                    <td className="p-3 text-right font-medium">{c.moneda === "ARS" ? renderMoney(c.monto) : ""}</td>
+                    <td className="p-3 text-right font-medium text-emerald-600">{c.moneda === "USD" ? `US$ ${c.monto}` : ""}</td>
+                    <td className="p-3"><button onClick={() => eliminarCosto(c.id)} disabled={calc.isMesCerrado} className="text-rose-400 hover:text-rose-600"><Trash2 size={16} /></button></td>
+                  </tr>
+                ))}
+                <tr className="bg-slate-50 font-bold border-t-2 border-gray-200">
+                  <td colSpan={4} className="p-3 text-right text-gray-500">Total por moneda:</td>
+                  <td className="p-3 text-right text-gray-700">{renderMoney(calc.costosMes.filter((c: any) => c.moneda === "ARS").reduce((a: any, b: any) => a + Number(b.monto), 0))}</td>
+                  <td className="p-3 text-right text-emerald-600">US$ {calc.costosMes.filter((c: any) => c.moneda === "USD").reduce((a: any, b: any) => a + Number(b.monto), 0)}</td>
+                  <td></td>
+                </tr>
+                <tr className="bg-slate-100 font-bold border-t border-gray-200">
+                  <td colSpan={4} className="p-3 text-right text-gray-600">Total equivalente (ARS):</td>
+                  <td colSpan={2} className="p-3 text-right text-rose-500">{renderMoney(calc.costosMes.reduce((a: any, b: any) => a + (b.moneda === "USD" ? Number(b.monto) * Number(tcUSD) : Number(b.monto)), 0))}</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
