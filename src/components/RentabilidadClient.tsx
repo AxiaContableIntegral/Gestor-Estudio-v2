@@ -515,9 +515,15 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
               });
             }
 
-            await supabase.from("cierres").insert(payloads);
-            toast.success("Mes cerrado para todas las líneas");
-            startTransition(() => router.refresh());
+            const { error: cierreError } = await supabase.from("cierres").insert(payloads);
+            
+            if (cierreError) {
+              console.error("Error al cerrar mes:", cierreError);
+              toast.error(`Error al cerrar mes: ${cierreError.message}`);
+            } else {
+              toast.success("Mes cerrado para todas las líneas");
+              startTransition(() => router.refresh());
+            }
           }
         }
       });
