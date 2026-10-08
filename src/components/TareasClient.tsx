@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
-export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [] }: { tareas: any[], dbClientes?: any[], dbSociedades?: any[] }) {
+export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [], tiempos = [] }: { tareas: any[], dbClientes?: any[], dbSociedades?: any[], tiempos?: any[] }) {
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<any>(null);
@@ -60,9 +60,19 @@ export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [
         matchMes = false;
       }
 
-      return matchCliente && matchLinea && matchResp && matchEstado && matchMes;
+    return matchCliente && matchLinea && matchResp && matchEstado && matchMes;
     });
   }, [tareas, fCliente, fLinea, fResp, fEstado, fMes]);
+
+  const horasPorTarea = useMemo(() => {
+    const sum: Record<string, number> = {};
+    tiempos.forEach(t => {
+      if (t.id_tarea) {
+        sum[t.id_tarea] = (sum[t.id_tarea] || 0) + Number(t.horas || 0);
+      }
+    });
+    return sum;
+  }, [tiempos]);
 
   const metrics = useMemo(() => {
     let vencidas = 0, proximas = 0, plazo = 0, hs = 0;
@@ -200,16 +210,14 @@ export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [
             <thead>
               <tr className="bg-slate-50 border-b border-gray-100 text-axia-gray text-xs tracking-wider uppercase font-bold">
                 <th className="p-3 w-20">Alerta</th>
-                <th className="p-3">ID</th>
                 <th className="p-3">Vto.</th>
                 <th className="p-3">Cliente</th>
-                <th className="p-3">Sociedad</th>
                 <th className="p-3">Línea</th>
                 <th className="p-3">Categoría</th>
                 <th className="p-3 min-w-[200px]">Descripción</th>
                 <th className="p-3">Resp.</th>
-                <th className="p-3">Compl.</th>
-                <th className="p-3">Hs</th>
+                <th className="p-3">Hs Presup.</th>
+                <th className="p-3">Hs Carg.</th>
                 <th className="p-3">Estado</th>
                 <th className="p-3 text-right">Acciones</th>
               </tr>
@@ -232,17 +240,11 @@ export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [
                         {alerta.text}
                       </span>
                     </td>
-                    <td className="p-3 font-bold text-xs text-axia-dark whitespace-nowrap">
-                      {tarea.descripcion?.startsWith("[Orden: ") ? tarea.descripcion.substring(8, tarea.descripcion.indexOf("]")) : (String(tarea.id).length > 8 ? String(tarea.id).slice(0, 6).toUpperCase() : tarea.id)}
-                    </td>
                     <td className="p-3 font-medium text-axia-dark whitespace-nowrap text-sm">
                       {tarea.fecha_vencimiento ? new Date(tarea.fecha_vencimiento + "T00:00:00").toLocaleDateString("es-AR") : "—"}
                     </td>
                     <td className="p-3 font-bold text-axia-blue text-sm whitespace-nowrap">
                       {tarea.cliente}
-                    </td>
-                    <td className="p-3 text-axia-gray text-sm whitespace-nowrap">
-                      {tarea.sociedad || "—"}
                     </td>
                     <td className="p-3 text-axia-gray text-sm whitespace-nowrap">
                       {tarea.linea_negocio}
@@ -258,11 +260,11 @@ export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [
                         {tarea.responsable || "—"}
                       </span>
                     </td>
-                    <td className="p-3 text-sm text-axia-gray font-medium">
-                      {tarea.complejidad || "—"}
-                    </td>
                     <td className="p-3 font-medium text-axia-gray text-sm">
                       {tarea.horas_presupuestadas || 0}
+                    </td>
+                    <td className="p-3 font-medium text-axia-blue text-sm">
+                      {(horasPorTarea[tarea.id] || 0).toFixed(1)}
                     </td>
                     <td className="p-3 text-sm">
                       <span className="font-semibold text-axia-dark text-[11px] uppercase tracking-wider">{tarea.estado}</span>

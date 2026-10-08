@@ -606,9 +606,10 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100"><p className="text-xs font-bold text-axia-gray uppercase">Ingresos</p><p className="text-2xl font-bold text-axia-blue">{calc.isCerradoObj ? renderMoney(calc.isCerradoObj.ingresos) : renderMoney(calc.ingresos)}</p><p className="text-xs text-axia-gray mt-1">{calc.isMesCerrado ? "Cerrado" : `${renderPct(calc.pEquipo.reduce((a, b) => a + b.horas_fact_totales, 0), calc.pEquipo.reduce((a, b) => a + b.hsTot, 0))} hs facturables`}</p></div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100"><p className="text-xs font-bold text-axia-gray uppercase">Margen Bruto Std</p><p className="text-2xl font-bold">{calc.isCerradoObj ? renderMoney(calc.isCerradoObj.margen_std) : renderMoney(calc.margenBruto)}</p><p className="text-xs text-axia-gray mt-1">{renderPct(calc.isCerradoObj ? calc.isCerradoObj.margen_std : calc.margenBruto, calc.isCerradoObj ? calc.isCerradoObj.ingresos : calc.ingresos)} s/ ingresos</p></div>
+        <div className="bg-orange-50 rounded-xl p-5 shadow-sm border border-orange-100"><p className="text-xs font-bold text-axia-orange uppercase">Pendiente de Cobro</p><p className="text-2xl font-bold text-axia-orange">{renderMoney(calc.totPendiente)}</p><p className="text-xs text-axia-orange mt-1 font-medium">Acumulado total: {renderMoney(calc.acumPendiente)}</p></div>
         <div className="bg-axia-blue rounded-xl p-5 shadow-sm text-white md:col-span-2"><p className="text-xs font-bold text-blue-200 uppercase">Resultado Antes de Retiro</p><p className="text-2xl font-bold">{calc.isCerradoObj ? renderMoney(calc.isCerradoObj.resultado) : renderMoney(calc.resultado)}</p><p className="text-xs text-blue-200 mt-1">{renderPct(calc.isCerradoObj ? calc.isCerradoObj.resultado : calc.resultado, calc.isCerradoObj ? calc.isCerradoObj.ingresos : calc.ingresos)} s/ ingresos</p></div>
       </div>
 

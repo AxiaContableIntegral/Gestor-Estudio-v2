@@ -25,10 +25,12 @@ export default async function TareasPage() {
     .select("*")
     .order("sociedad", { ascending: true });
 
+  const { data: tiempos } = await supabase.from("tiempos_log").select("id_tarea, horas");
+  
   if (error || errorClientes || errorSociedades) {
     console.error("Error cargando tareas:", error || errorClientes || errorSociedades);
     return <div>Error cargando la base de datos. Verificá la consola.</div>;
   }
 
-  return <TareasClient tareas={tareas || []} dbClientes={clientes || []} dbSociedades={sociedades || []} />;
+  return <TareasClient tareas={tareas || []} dbClientes={clientes || []} dbSociedades={sociedades || []} tiempos={tiempos || []} />;
 }
