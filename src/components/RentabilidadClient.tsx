@@ -33,6 +33,8 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
 
   const [isAddingCobranza, setIsAddingCobranza] = useState(false);
   const [newCobranza, setNewCobranza] = useState({ fecha: mesSel + "-01", cliente_linea: "", concepto: "", monto: "", id_tarea: "" });
+  const [savingCobroKey, setSavingCobroKey] = useState<string | null>(null);
+  const [savingEquipoId, setSavingEquipoId] = useState<string | null>(null);
 
   const [tcUSD, setTcUSD] = useState("");
 
@@ -276,27 +278,61 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
 
   // Actions
   const guardarCobro = async (c: any, pagado: boolean, fechaVal: string) => {
+    const key = c.cliente + c.linea_negocio + c.concepto;
+    setSavingCobroKey(key);
+    
     let f = fechaVal;
     if (pagado && !f) {
       f = new Date().toISOString().split("T")[0];
     } else if (!pagado) {
       f = "";
     }
+    
     const payload = {
-      mes: c.mes, cliente: c.cliente, linea_negocio: c.linea_negocio, concepto: c.concepto,
-      devengado: c.devengado, cobrado: pagado ? "Si" : "No", fecha: f || null
+      mes: c.mes, 
+      cliente: c.cliente, 
+      linea_negocio: c.linea_negocio, 
+      concepto: c.concepto,
+      devengado: c.devengado, 
+      cobrado: pagado ? "Si" : "No", 
+      fecha: f || null
     };
+    
+    let opError = null;
+
     if (c._isSaved && c.id) {
-      await supabase.from("cobros").update(payload).eq("id", c.id);
+      const { error } = await supabase.from("cobros").update(payload).eq("id", c.id);
+      opError = error;
     } else {
-      await supabase.from("cobros").insert([payload]);
+      const { error } = await supabase.from("cobros").insert([payload]);
+      opError = error;
     }
-    startTransition(() => router.refresh());
+
+    if (opError) {
+      console.error("Error al guardar cobro:", opError);
+      toast.error(`Error al guardar: ${opError.message}`);
+    } else {
+      toast.success("Guardado correctamente");
+      startTransition(() => router.refresh());
+    }
+    setSavingCobroKey(null);
   };
 
-  const guardarEquipo = async (e: any, prop: string, val: any) => {
-    await supabase.from("equipo").update({ [prop]: val }).eq("id", e.id);
-    startTransition(() => router.refresh());
+  const guardarEquipoFila = async (e: any) => {
+    setSavingEquipoId(e.id);
+    const { error } = await supabase.from("equipo").update({ 
+      tarifa_hora: e.tarifa, 
+      sueldo_mensual: e.sueldo, 
+      es_socio: e.es_socio ? "Si" : "No" 
+    }).eq("id", e.id);
+    
+    if (error) {
+      toast.error(`Error al guardar equipo: ${error.message}`);
+    } else {
+      toast.success("Equipo guardado");
+      startTransition(() => router.refresh());
+    }
+    setSavingEquipoId(null);
   };
 
   const guardarCosto = async () => {
@@ -609,14 +645,26 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Cliente</th><th className="p-3">Linea</th><th className="p-3">Concepto</th><th className="p-3 text-right">Devengado</th><th className="p-3 text-center">¿Pagó?</th><th className="p-3">Fecha</th><th className="p-3"></th></tr></thead>
               <tbody className="divide-y divide-gray-50">
-                {calc.ctrlCobranzas.map((c, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    <td className="p-3 font-bold">{c.cliente}</td><td className="p-3 text-gray-500">{c.linea_negocio}</td><td className="p-3">{c.concepto}</td><td className="p-3 text-right font-medium">{renderMoney(c.devengado)}</td>
-                    <td className="p-3 text-center"><input type="checkbox" checked={c.cobrado === "Si" || c.cobrado === true} onChange={e => { c.cobrado = e.target.checked; }} className="w-4 h-4 cursor-pointer" /></td>
-                    <td className="p-3"><input type="date" defaultValue={c.fecha || ""} onChange={e => c.fecha = e.target.value} className="border p-1 rounded text-xs" /></td>
-                    <td className="p-3"><button onClick={() => guardarCobro(c, c.cobrado === "Si" || c.cobrado === true, c.fecha)} className="text-axia-blue font-bold text-xs hover:underline">Guardar</button></td>
-                  </tr>
-                ))}
+                {calc.ctrlCobranzas.map((c, i) => {
+                  const key = c.cliente + c.linea_negocio + c.concepto;
+                  const isSaving = savingCobroKey === key;
+                  return (
+                    <tr key={`${mesSel}-${key}`} className="hover:bg-slate-50">
+                      <td className="p-3 font-bold">{c.cliente}</td><td className="p-3 text-gray-500">{c.linea_negocio}</td><td className="p-3">{c.concepto}</td><td className="p-3 text-right font-medium">{renderMoney(c.devengado)}</td>
+                      <td className="p-3 text-center"><input type="checkbox" defaultChecked={c.cobrado === "Si" || c.cobrado === true} onChange={e => { c.cobrado = e.target.checked; }} className="w-4 h-4 cursor-pointer" /></td>
+                      <td className="p-3"><input type="date" defaultValue={c.fecha || ""} onChange={e => c.fecha = e.target.value} className="border p-1 rounded text-xs" /></td>
+                      <td className="p-3">
+                        <button 
+                          onClick={() => guardarCobro(c, c.cobrado === "Si" || c.cobrado === true, c.fecha)} 
+                          disabled={isSaving}
+                          className={`font-bold text-xs hover:underline ${isSaving ? 'text-gray-400' : 'text-axia-blue'}`}
+                        >
+                          {isSaving ? "Guardando..." : "Guardar"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -653,21 +701,33 @@ export default function RentabilidadClient({ clientes, tareas, equipo, tiempos, 
       {activeTab === "equipo" && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Persona</th><th className="p-3 text-center">Hs Tot</th><th className="p-3 text-center">Hs Fact</th><th className="p-3 text-center">% Fact</th><th className="p-3 text-right">Tarifa/h</th><th className="p-3 text-right">Imp Clientes</th><th className="p-3 text-right">Sueldo</th><th className="p-3 text-right">Ajuste</th><th className="p-3 text-right">Costo Real/h</th></tr></thead>
+            <thead className="bg-slate-50 border-b border-gray-100 text-axia-gray font-bold uppercase text-[10px]"><tr><th className="p-3">Persona</th><th className="p-3 text-center">Hs Tot</th><th className="p-3 text-center">Hs Fact</th><th className="p-3 text-center">% Fact</th><th className="p-3 text-right">Tarifa/h</th><th className="p-3 text-right">Imp Clientes</th><th className="p-3 text-right">Sueldo</th><th className="p-3 text-right">Ajuste</th><th className="p-3 text-right">Costo Real/h</th><th className="p-3"></th></tr></thead>
             <tbody className="divide-y divide-gray-50">
-              {calc.pEquipo.map((e: any, i: number) => (
-                <tr key={i} className="hover:bg-slate-50">
-                  <td className="p-3 font-bold flex flex-col gap-1">
-                    {e.nombre}
-                    <label className="text-[10px] flex items-center gap-1 font-normal text-gray-500"><input type="checkbox" checked={e.es_socio} onChange={ev => guardarEquipo(e, "es_socio", ev.target.checked ? "Si" : "No")} /> Socio</label>
-                  </td>
-                  <td className="p-3 text-center font-medium">{e.hsTot.toFixed(1)}</td><td className="p-3 text-center">{e.horas_fact_totales.toFixed(1)}</td><td className="p-3 text-center">{e.pctF.toFixed(0)}%</td>
-                  <td className="p-3 text-right"><input type="number" defaultValue={e.tarifa} onBlur={ev => guardarEquipo(e, "tarifa_hora", ev.target.value)} className="w-20 text-right border-b" /></td>
-                  <td className="p-3 text-right">{renderMoney(e.impFact)}</td>
-                  <td className="p-3 text-right"><input type="number" defaultValue={e.sueldo} onBlur={ev => guardarEquipo(e, "sueldo_mensual", ev.target.value)} className="w-24 text-right border-b" /></td>
-                  <td className="p-3 text-right font-bold">{e.es_socio ? "-" : renderMoney(e.ajuste)}</td><td className="p-3 text-right font-bold text-rose-500">{e.es_socio ? "-" : renderMoney(e.costoReal)}</td>
-                </tr>
-              ))}
+              {calc.pEquipo.map((e: any, i: number) => {
+                const isSaving = savingEquipoId === e.id;
+                return (
+                  <tr key={e.id || i} className="hover:bg-slate-50">
+                    <td className="p-3 font-bold flex flex-col gap-1">
+                      {e.nombre}
+                      <label className="text-[10px] flex items-center gap-1 font-normal text-gray-500"><input type="checkbox" defaultChecked={e.es_socio} onChange={ev => e.es_socio = ev.target.checked} /> Socio</label>
+                    </td>
+                    <td className="p-3 text-center font-medium">{e.hsTot.toFixed(1)}</td><td className="p-3 text-center">{e.horas_fact_totales.toFixed(1)}</td><td className="p-3 text-center">{e.pctF.toFixed(0)}%</td>
+                    <td className="p-3 text-right"><input type="number" defaultValue={e.tarifa} onChange={ev => e.tarifa = ev.target.value} className="w-20 text-right border-b" /></td>
+                    <td className="p-3 text-right">{renderMoney(e.impFact)}</td>
+                    <td className="p-3 text-right"><input type="number" defaultValue={e.sueldo} onChange={ev => e.sueldo = ev.target.value} className="w-24 text-right border-b" /></td>
+                    <td className="p-3 text-right font-bold">{e.es_socio ? "-" : renderMoney(e.ajuste)}</td><td className="p-3 text-right font-bold text-rose-500">{e.es_socio ? "-" : renderMoney(e.costoReal)}</td>
+                    <td className="p-3">
+                      <button 
+                        onClick={() => guardarEquipoFila(e)} 
+                        disabled={isSaving}
+                        className={`font-bold text-xs hover:underline ${isSaving ? 'text-gray-400' : 'text-axia-blue'}`}
+                      >
+                        {isSaving ? "Guardando..." : "Guardar"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
