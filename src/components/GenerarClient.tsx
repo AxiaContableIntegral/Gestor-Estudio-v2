@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, Settings, UploadCloud, FileSpreadsheet, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { CalendarDays, Settings, UploadCloud, FileSpreadsheet, Plus, Trash2, CheckCircle2, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -55,6 +55,38 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
 
   // ---- Generar Logic ----
   const normalizar = (txt: string) => (txt || "").toString().toLowerCase().trim();
+
+  const descargarPlantillaModelo = () => {
+    const columns = ["Cliente", "CUIT"];
+    const dynamicCols = Array.from(
+      new Set(
+        plantillas
+          .map((p: any) => p.columna_origen)
+          .filter((c: any) => c && c.toUpperCase() !== "FIN_DE_MES")
+      )
+    );
+    columns.push(...dynamicCols);
+
+    const [anioStr, mesStr] = mesGenerar.split("-");
+    const sampleDate = `15/${mesStr}/${anioStr}`;
+
+    const rows = sociedades.map((s: any) => {
+      const row: Record<string, string> = {
+        Cliente: s.sociedad,
+        CUIT: s.cuit || "",
+      };
+      dynamicCols.forEach((col: string) => {
+        row[col] = sampleDate;
+      });
+      return row;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows, { header: columns });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Base Calendario");
+    XLSX.writeFile(wb, `plantilla_calendario_afip_${mesGenerar}.xlsx`);
+    toast.success("Plantilla modelo descargada con éxito");
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -244,11 +276,20 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
             <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-axia-teal transition-colors bg-slate-50">
               <FileSpreadsheet size={40} className="mx-auto text-axia-teal mb-3" />
               <p className="text-axia-dark font-bold mb-1">Subir planilla Calendario AFIP</p>
-              <p className="text-sm text-axia-gray mb-4">Exportá la hoja "Base Calendario" como .CSV o .XLSX y subila acá.</p>
-              <label className="inline-flex cursor-pointer items-center gap-2 bg-axia-blue text-white px-6 py-2.5 rounded-lg font-bold shadow-sm hover:bg-blue-800 transition-colors">
-                <UploadCloud size={18}/> {isProcessingFile ? "Procesando..." : "Seleccionar Archivo"}
-                <input type="file" accept=".csv, .xlsx, .xls" className="hidden" onChange={handleFileUpload} disabled={isProcessingFile} />
-              </label>
+              <p className="text-sm text-axia-gray mb-4">Exportá la hoja &quot;Base Calendario&quot; como .CSV o .XLSX y subila acá.</p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={descargarPlantillaModelo}
+                  className="inline-flex items-center gap-2 bg-white border border-gray-300 text-axia-dark px-5 py-2.5 rounded-lg font-bold shadow-sm hover:bg-gray-50 transition-colors"
+                >
+                  <Download size={18} className="text-emerald-600" /> Descargar Plantilla Modelo (.xlsx)
+                </button>
+                <label className="inline-flex cursor-pointer items-center gap-2 bg-axia-blue text-white px-6 py-2.5 rounded-lg font-bold shadow-sm hover:bg-blue-800 transition-colors">
+                  <UploadCloud size={18}/> {isProcessingFile ? "Procesando..." : "Seleccionar Archivo"}
+                  <input type="file" accept=".csv, .xlsx, .xls" className="hidden" onChange={handleFileUpload} disabled={isProcessingFile} />
+                </label>
+              </div>
             </div>
             {sinEmparejar.length > 0 && (
               <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">

@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, Users, Clock, Calculator, CalendarCheck, Settings, CalendarDays, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Users, Clock, Calculator, CalendarCheck, CalendarDays, ShieldCheck, BarChart3 } from "lucide-react";
 
 export function Sidebar({ user, role }: { user?: string, role?: string }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -22,18 +22,19 @@ export function Sidebar({ user, role }: { user?: string, role?: string }) {
     { name: "Tareas y Vencimientos", href: "/tareas", icon: CalendarCheck },
     { name: "Generar Mes", href: "/generar", icon: CalendarDays },
     { name: "Consola de Tiempos", href: "/tiempos", icon: Clock },
+    { name: "Análisis de Tiempos", href: "/analisis-tiempos", icon: BarChart3 },
     { name: "Clientes", href: "/clientes", icon: Users },
     { name: "Rentabilidad", href: "/rentabilidad", icon: Calculator },
     { name: "Equipo y Accesos", href: "/equipo", icon: ShieldCheck },
   ];
 
   if (role !== 'admin') {
-    menuItems = menuItems.filter(i => i.name !== 'Rentabilidad' && i.name !== 'Equipo y Accesos');
+    menuItems = menuItems.filter(i => i.name !== 'Rentabilidad' && i.name !== 'Equipo y Accesos' && i.name !== 'Análisis de Tiempos');
   }
 
   // Especificación: "Solo el administrador (Agustín). El resto del equipo no ve la pestaña."
   if (role !== 'admin' || (user !== 'Agustín' && user !== 'Agustin')) {
-    menuItems = menuItems.filter(i => i.name !== 'Rentabilidad');
+    menuItems = menuItems.filter(i => i.name !== 'Rentabilidad' && i.name !== 'Análisis de Tiempos');
   }
 
   return (

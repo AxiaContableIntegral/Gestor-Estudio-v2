@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useTransition } from "react";
-import { Calculator, Calendar, DollarSign, Users, Briefcase, TrendingUp, Receipt, Plus, Copy, CheckCircle2, Save, Trash2, Download, Lock, Unlock } from "lucide-react";
+import { Plus, Copy, Save, Trash2, Download, Lock, Unlock } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";

@@ -83,10 +83,6 @@ export function EditarTareaModal({ tarea, onClose }: { tarea: any, onClose: () =
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-axia-gray mb-1.5">N° de Orden / ID</label>
-              <input type="text" name="orden" value={formData.orden} onChange={handleChange} placeholder="Ej: 1400" className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm" />
-            </div>
-            <div>
               <label className="block text-sm font-bold text-axia-gray mb-1.5">Categoría</label>
               <select name="categoria" value={formData.categoria} onChange={handleChange} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm">
                 <option value="Impuestos">Impuestos</option>
