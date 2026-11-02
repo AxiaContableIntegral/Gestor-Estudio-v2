@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Users, Plus, Trash2, Edit2, ShieldAlert } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { Plus, Trash2, Edit2, ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -22,35 +21,38 @@ export default function EquipoClient({ equipo }: { equipo: any[] }) {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
-    const payload = {
-      nombre: formData.nombre,
-      rol: formData.rol,
-      password: formData.password,
-      es_socio: formData.es_socio,
-      tarifa_hora: Number(formData.tarifa_hora),
-      sueldo_mensual: Number(formData.sueldo_mensual)
-    };
 
-    let error;
-    if (isEditMode) {
-      const res = await supabase.from("equipo").update(payload).eq("id", formData.id);
-      error = res.error;
-    } else {
-      const res = await supabase.from("equipo").insert([payload]);
-      error = res.error;
-    }
+    try {
+      const res = await fetch("/api/equipo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save",
+          id: isEditMode ? formData.id : undefined,
+          nombre: formData.nombre,
+          rol: formData.rol,
+          password: formData.password || undefined,
+          es_socio: formData.es_socio,
+          tarifa_hora: Number(formData.tarifa_hora),
+          sueldo_mensual: Number(formData.sueldo_mensual),
+        }),
+      });
 
-    setLoading(false);
-    
-    if (error) {
-      toast.error("Error: " + error.message);
-    } else {
-      toast.success(isEditMode ? "Usuario actualizado" : "Usuario creado");
-      setIsModalOpen(false);
-      setIsEditMode(false);
-      setFormData({ id: "", nombre: "", rol: "empleado", password: "", tarifa_hora: "0", sueldo_mensual: "0", es_socio: "No" });
-      router.refresh();
+      const data = await res.json();
+      setLoading(false);
+
+      if (!res.ok) {
+        toast.error("Error: " + (data.error || "No se pudo guardar el usuario"));
+      } else {
+        toast.success(isEditMode ? "Usuario actualizado exitosamente" : "Usuario creado exitosamente");
+        setIsModalOpen(false);
+        setIsEditMode(false);
+        setFormData({ id: "", nombre: "", rol: "empleado", password: "", tarifa_hora: "0", sueldo_mensual: "0", es_socio: "No" });
+        router.refresh();
+      }
+    } catch {
+      setLoading(false);
+      toast.error("Error de conexión al guardar el usuario");
     }
   };
 
@@ -59,7 +61,7 @@ export default function EquipoClient({ equipo }: { equipo: any[] }) {
       id: user.id,
       nombre: user.nombre,
       rol: user.rol,
-      password: user.password,
+      password: "", // Leave blank to avoid overwriting unless admin types a new one
       es_socio: user.es_socio,
       tarifa_hora: String(user.tarifa_hora),
       sueldo_mensual: String(user.sueldo_mensual)
@@ -71,14 +73,24 @@ export default function EquipoClient({ equipo }: { equipo: any[] }) {
   const confirmDelete = async () => {
     if (!userToDelete) return;
     setLoading(true);
-    const { error } = await supabase.from("equipo").delete().eq("id", userToDelete.id);
-    setLoading(false);
-    if (error) {
-      toast.error("Error: " + error.message);
-    } else {
-      toast.success("Usuario eliminado");
-      setUserToDelete(null);
-      router.refresh();
+    try {
+      const res = await fetch("/api/equipo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", id: userToDelete.id }),
+      });
+      const data = await res.json();
+      setLoading(false);
+      if (!res.ok) {
+        toast.error("Error: " + (data.error || "No se pudo eliminar el usuario"));
+      } else {
+        toast.success("Usuario eliminado exitosamente");
+        setUserToDelete(null);
+        router.refresh();
+      }
+    } catch {
+      setLoading(false);
+      toast.error("Error de conexión al eliminar el usuario");
     }
   };
 
@@ -121,7 +133,7 @@ export default function EquipoClient({ equipo }: { equipo: any[] }) {
                       {e.rol}
                     </span>
                   </td>
-                  <td className="p-4 font-mono text-xs text-gray-500">{e.password}</td>
+                  <td className="p-4 font-mono text-xs text-gray-400">••••••••</td>
                   <td className="p-4 font-medium text-axia-gray">{e.es_socio}</td>
                   <td className="p-4 text-right font-medium text-axia-gray">{Number(e.tarifa_hora).toLocaleString("es-AR")}</td>
                   <td className="p-4 text-right font-medium text-axia-gray">{Number(e.sueldo_mensual).toLocaleString("es-AR")}</td>
@@ -166,8 +178,17 @@ export default function EquipoClient({ equipo }: { equipo: any[] }) {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-axia-gray mb-1.5">Contraseña</label>
-                  <input required type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm" />
+                  <label className="block text-sm font-bold text-axia-gray mb-1.5">
+                    Contraseña {isEditMode && <span className="text-xs text-gray-400 font-normal">(vacía = sin cambios)</span>}
+                  </label>
+                  <input
+                    required={!isEditMode}
+                    type="password"
+                    placeholder={isEditMode ? "Sin cambios" : "••••••••"}
+                    value={formData.password}
+                    onChange={e => setFormData({...formData, password: e.target.value})}
+                    className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white text-sm"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-axia-gray mb-1.5">¿Es Socio?</label>

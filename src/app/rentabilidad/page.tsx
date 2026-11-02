@@ -3,14 +3,17 @@ import { redirect } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import RentabilidadClient from "@/components/RentabilidadClient";
 
+import { verifySession } from "@/lib/auth";
+
 export const revalidate = 0;
 
 export default async function RentabilidadPage() {
   const cookieStore = cookies();
-  const role = cookieStore.get("axia_role")?.value;
-  const username = cookieStore.get("axia_user")?.value;
+  const token = cookieStore.get("axia_session")?.value;
+  const session = token ? await verifySession(token) : null;
 
-  if (role !== "admin" || (username !== "Agustín" && username !== "Agustin")) {
+  const isAgustin = session?.nombre === "Agustín" || session?.nombre === "Agustin";
+  if (!session || session.rol !== "admin" || !isAgustin) {
     redirect("/"); 
   }
 

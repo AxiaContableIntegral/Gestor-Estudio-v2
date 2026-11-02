@@ -3,18 +3,17 @@ import { redirect } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import AnalisisTiemposClient from "@/components/AnalisisTiemposClient";
 
+import { verifySession } from "@/lib/auth";
+
 export const revalidate = 0;
 
 export default async function AnalisisTiemposPage() {
   const cookieStore = cookies();
-  const isLogin = cookieStore.get("axia_user")?.value;
-  const role = cookieStore.get("axia_role")?.value;
+  const token = cookieStore.get("axia_session")?.value;
+  const session = token ? await verifySession(token) : null;
 
-  if (!isLogin) {
-    redirect("/login");
-  }
-
-  if (role !== "admin" || (isLogin !== "Agustín" && isLogin !== "Agustin")) {
+  const isAgustin = session?.nombre === "Agustín" || session?.nombre === "Agustin";
+  if (!session || session.rol !== "admin" || !isAgustin) {
     redirect("/");
   }
 
@@ -35,8 +34,8 @@ export default async function AnalisisTiemposPage() {
       tiempos={tiempos || []}
       clientes={clientes || []}
       equipo={equipo || []}
-      isAdmin={role === "admin"}
-      currentUser={isLogin}
+      isAdmin={session.rol === "admin"}
+      currentUser={session.nombre}
     />
   );
 }

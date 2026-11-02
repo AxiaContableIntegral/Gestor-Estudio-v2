@@ -9,8 +9,13 @@ export function Sidebar({ user, role }: { user?: string, role?: string }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const router = useRouter();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setIsLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
     document.cookie = "axia_user=; path=/; max-age=0";
     document.cookie = "axia_role=; path=/; max-age=0";
     router.push("/login");
