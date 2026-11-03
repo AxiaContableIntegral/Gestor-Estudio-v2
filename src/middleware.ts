@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verifySession } from "@/lib/jwt";
+import { verifySession, signSession, SESSION_MAX_AGE } from "@/lib/jwt";
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -15,7 +15,7 @@ export async function middleware(request: NextRequest) {
   const sessionCookie = request.cookies.get("axia_session")?.value;
   const session = sessionCookie ? await verifySession(sessionCookie) : null;
 
-  // Unauthenticated user attempting to access protected route
+  // Unauthenticated user attempting to access protected route (or session expired after 1h)
   if (!session && !isLoginPage) {
     const response = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.delete("axia_session");
@@ -42,7 +42,35 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  // Rolling session refresh: extend 1 hour of activity on each navigation
+  const response = NextResponse.next();
+  if (session) {
+    const isProd = process.env.NODE_ENV === "production";
+    const refreshedToken = await signSession(session);
+    response.cookies.set("axia_session", refreshedToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE,
+    });
+    response.cookies.set("axia_user", session.nombre, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE,
+    });
+    response.cookies.set("axia_role", session.rol, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE,
+    });
+  }
+
+  return response;
 }
 
 export const config = {

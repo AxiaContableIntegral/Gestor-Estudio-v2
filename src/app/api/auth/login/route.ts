@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     });
 
     const isProd = process.env.NODE_ENV === "production";
-    const maxAge = 60 * 60 * 24 * 7; // 7 days
+    const maxAge = 60 * 60; // 1 hour
 
     const response = NextResponse.json({
       success: true,

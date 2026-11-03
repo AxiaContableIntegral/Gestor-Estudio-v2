@@ -13,11 +13,13 @@ export interface UserSession {
   rol: string;
 }
 
+export const SESSION_MAX_AGE = 60 * 60; // 1 hour in seconds
+
 export async function signSession(payload: UserSession): Promise<string> {
   return await new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime("1h")
     .sign(getJwtSecretKey());
 }
 
