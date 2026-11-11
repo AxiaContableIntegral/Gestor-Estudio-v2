@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { CheckCircle2, Clock, MoreHorizontal, Download, AlertCircle, CalendarClock, Filter, Edit2, Trash2 } from "lucide-react";
+import { CheckCircle2, Download, AlertCircle, CalendarClock, Filter, Edit2, Trash2 } from "lucide-react";
 import { NuevaTareaModal } from "@/components/NuevaTareaModal";
 import { EditarTareaModal } from "@/components/EditarTareaModal";
 import { supabase } from "@/lib/supabase";
@@ -27,6 +27,21 @@ export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [
   const responsables = Array.from(new Set(tareas.map(t => t.responsable).filter(Boolean))).sort();
   const lineas = ["Estudio Contable", "Consultoría CFO"];
   const estados = ["Pendiente", "En Proceso", "Completada"];
+
+  // Meses disponibles según los vencimientos reales de las tareas (más reciente primero)
+  const mesesDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    tareas.forEach(t => {
+      if (t.fecha_vencimiento) {
+        const [y, m] = String(t.fecha_vencimiento).split("-");
+        if (y && m) set.add(`${y}-${m}`);
+      }
+    });
+    return Array.from(set).sort().reverse().map(k => {
+      const [y, m] = k.split("-");
+      return `${m}/${y}`;
+    });
+  }, [tareas]);
 
   const calcularAlerta = (vencimiento: string | null, estado: string) => {
     if (estado === "Completada") return { text: "✅ Completada", color: "text-emerald-600 bg-emerald-50", type: "OK" };
@@ -75,15 +90,16 @@ export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [
   }, [tiempos]);
 
   const metrics = useMemo(() => {
-    let vencidas = 0, proximas = 0, plazo = 0, hs = 0;
+    let vencidas = 0, proximas = 0, plazo = 0, hs = 0, pendientes = 0;
     tareasFiltradas.forEach(t => {
       const alerta = calcularAlerta(t.fecha_vencimiento, t.estado);
       if (alerta.type === "VENCIDA") vencidas++;
       if (alerta.type === "PROXIMA") proximas++;
       if (alerta.type === "PLAZO") plazo++;
+      if (t.estado === "Pendiente" || t.estado === "En Proceso") pendientes++;
       hs += Number(t.horas_presupuestadas || 0);
     });
-    return { vencidas, proximas, plazo, hs };
+    return { vencidas, proximas, plazo, hs, pendientes };
   }, [tareasFiltradas]);
 
   // ELIMINAR
@@ -153,10 +169,14 @@ export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [
       </div>
 
       {/* Metricas */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
         <div className="bg-white rounded-xl p-4 shadow-sm border-l-4 border-axia-blue">
           <p className="text-xs text-axia-gray font-bold uppercase tracking-wider">En vista</p>
           <p className="text-2xl font-bold text-axia-dark mt-1">{tareasFiltradas.length}</p>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm border-l-4 border-slate-400">
+          <p className="text-xs text-axia-gray font-bold uppercase tracking-wider">Pendientes</p>
+          <p className="text-2xl font-bold text-axia-dark mt-1">{metrics.pendientes}</p>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border-l-4 border-rose-500">
           <p className="text-xs text-axia-gray font-bold uppercase tracking-wider flex items-center gap-1"><AlertCircle size={14}/> Vencidas</p>
@@ -183,8 +203,7 @@ export default function TareasClient({ tareas, dbClientes = [], dbSociedades = [
         </div>
         <select value={fMes} onChange={e => setFMes(e.target.value)} className="flex-1 bg-transparent text-sm outline-none font-medium text-axia-dark">
           <option value="">Todos los meses</option>
-          <option value="09/2026">09/2026</option>
-          <option value="10/2026">10/2026</option>
+          {mesesDisponibles.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
         <select value={fLinea} onChange={e => setFLinea(e.target.value)} className="flex-1 bg-transparent text-sm outline-none font-medium text-axia-dark border-l border-gray-100 pl-4">
           <option value="">Todas las líneas</option>

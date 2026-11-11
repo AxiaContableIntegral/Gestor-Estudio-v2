@@ -10,6 +10,9 @@ export default function DashboardClient({ tareas, tiempos, clientes, isEmployee 
 
   const calc = useMemo(() => {
     const now = new Date();
+    // Inicio del día: una tarea que vence hoy NO está vencida (mismo criterio que Tareas y Vencimientos)
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
     const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     
     // Filtros
@@ -35,7 +38,7 @@ export default function DashboardClient({ tareas, tiempos, clientes, isEmployee 
       pendientes++;
       if (t.fecha_vencimiento) {
         const v = new Date(t.fecha_vencimiento + "T00:00:00");
-        if (v < now) vencidas++;
+        if (v < hoy) vencidas++;
       }
     });
 
@@ -77,7 +80,7 @@ export default function DashboardClient({ tareas, tiempos, clientes, isEmployee 
         c["Sin Fecha"] += 1; // Count by number of tasks
       } else {
         const v = new Date(t.fecha_vencimiento + "T00:00:00");
-        if (v < now) c.Vencida += 1;
+        if (v < hoy) c.Vencida += 1;
         else c["En Plazo"] += 1;
       }
     });
