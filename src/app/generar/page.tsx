@@ -16,10 +16,26 @@ export default async function GenerarPage() {
     .from("clientes")
     .select("*");
 
-  if (errorPlantillas || errorSociedades || errorClientes) {
-    console.error("Error:", errorPlantillas || errorSociedades || errorClientes);
+  // Tareas generadas por importación (origen null) para poder anular una subida
+  const { data: tareasImportadas, error: errorTareas } = await supabase
+    .from("tareas")
+    .select("id, fecha_creacion, fecha_vencimiento, estado")
+    .is("origen", null);
+
+  const { data: tiempos } = await supabase.from("tiempos_log").select("id_tarea");
+
+  if (errorPlantillas || errorSociedades || errorClientes || errorTareas) {
+    console.error("Error:", errorPlantillas || errorSociedades || errorClientes || errorTareas);
     return <div>Error cargando base de datos. Verificá la consola.</div>;
   }
 
-  return <GenerarClient plantillas={plantillas || []} sociedades={sociedades || []} clientes={clientes || []} />;
+  return (
+    <GenerarClient
+      plantillas={plantillas || []}
+      sociedades={sociedades || []}
+      clientes={clientes || []}
+      tareasImportadas={tareasImportadas || []}
+      tiempos={tiempos || []}
+    />
+  );
 }

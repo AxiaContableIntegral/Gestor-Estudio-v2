@@ -12,8 +12,7 @@ export default async function AnalisisTiemposPage() {
   const token = cookieStore.get("axia_session")?.value;
   const session = token ? await verifySession(token) : null;
 
-  const isAgustin = session?.nombre === "Agustín" || session?.nombre === "Agustin";
-  if (!session || session.rol !== "admin" || !isAgustin) {
+  if (!session || session.rol !== "admin") {
     redirect("/");
   }
 

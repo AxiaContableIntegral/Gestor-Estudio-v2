@@ -37,11 +37,6 @@ export function Sidebar({ user, role }: { user?: string, role?: string }) {
     menuItems = menuItems.filter(i => i.name !== 'Rentabilidad' && i.name !== 'Equipo y Accesos' && i.name !== 'Análisis de Tiempos');
   }
 
-  // Especificación: "Solo el administrador (Agustín). El resto del equipo no ve la pestaña."
-  if (role !== 'admin' || (user !== 'Agustín' && user !== 'Agustin')) {
-    menuItems = menuItems.filter(i => i.name !== 'Rentabilidad' && i.name !== 'Análisis de Tiempos');
-  }
-
   return (
     <aside className="w-64 bg-axia-blue text-white h-screen sticky top-0 flex flex-col overflow-y-auto">
       <div className="p-6">

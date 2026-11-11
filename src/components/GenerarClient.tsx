@@ -1,13 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, Settings, UploadCloud, FileSpreadsheet, Plus, Trash2, CheckCircle2, Download } from "lucide-react";
+import { useState, useMemo } from "react";
+import { CalendarDays, Settings, UploadCloud, FileSpreadsheet, Plus, Trash2, CheckCircle2, Download, History, Undo2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
-export default function GenerarClient({ plantillas, sociedades, clientes }: { plantillas: any[], sociedades: any[], clientes: any[] }) {
+const RESPONSABLES = [
+  { value: "Agustin", label: "Agustín" },
+  { value: "Chiara", label: "Chiara" },
+  { value: "Paula", label: "Paula" },
+];
+
+export default function GenerarClient({ plantillas, sociedades, clientes, tareasImportadas = [], tiempos = [] }: { plantillas: any[], sociedades: any[], clientes: any[], tareasImportadas?: any[], tiempos?: any[] }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"generar" | "plantillas">("generar");
   
@@ -28,6 +34,58 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [sinEmparejar, setSinEmparejar] = useState<string[]>([]);
+
+  // Historial de importaciones (para anular una subida)
+  const [loteAAnular, setLoteAAnular] = useState<any>(null);
+  const [anulando, setAnulando] = useState(false);
+
+  const lotesImportados = useMemo(() => {
+    const conHoras = new Set(tiempos.map((t: any) => t.id_tarea));
+    const grupos = new Map<string, any>();
+    tareasImportadas.forEach((t: any) => {
+      // Cada subida se inserta en un solo INSERT => todas sus tareas comparten fecha_creacion
+      const key = t.fecha_creacion || "sin_fecha";
+      if (!grupos.has(key)) grupos.set(key, { key, fecha_creacion: t.fecha_creacion, total: 0, anulables: [] as string[], protegidas: 0, meses: new Set<string>() });
+      const g = grupos.get(key);
+      g.total++;
+      if (t.fecha_vencimiento) g.meses.add(t.fecha_vencimiento.slice(0, 7));
+      // No se borran tareas completadas ni con horas cargadas
+      if (t.estado === "Completada" || conHoras.has(t.id)) g.protegidas++;
+      else g.anulables.push(t.id);
+    });
+    return Array.from(grupos.values())
+      .filter(g => g.total > 1)
+      .sort((a, b) => String(b.fecha_creacion).localeCompare(String(a.fecha_creacion)));
+  }, [tareasImportadas, tiempos]);
+
+  const confirmarAnulacion = async () => {
+    if (!loteAAnular || loteAAnular.anulables.length === 0) return;
+    setAnulando(true);
+    const ids: string[] = loteAAnular.anulables;
+    let error: any = null;
+    for (let i = 0; i < ids.length; i += 100) {
+      const res = await supabase.from("tareas").delete().in("id", ids.slice(i, i + 100));
+      if (res.error) { error = res.error; break; }
+    }
+    setAnulando(false);
+    if (error) {
+      toast.error("Error al anular la subida: " + error.message);
+    } else {
+      toast.success(`Subida anulada: se eliminaron ${ids.length} tareas`);
+      setLoteAAnular(null);
+      router.refresh();
+    }
+  };
+
+  const cambiarResponsableDefault = (valor: string) => {
+    setResponsable(valor);
+    // Aplica el nuevo responsable a las filas de la vista previa que se van a crear
+    setPreviewData(prev => prev.map(p => (p.ya_existe ? p : { ...p, responsable: valor })));
+  };
+
+  const cambiarResponsableFila = (index: number, valor: string) => {
+    setPreviewData(prev => prev.map((p, i) => (i === index ? { ...p, responsable: valor } : p)));
+  };
 
   // ---- Plantillas Logic ----
   const handleSavePlantilla = async (e: React.FormEvent) => {
@@ -227,7 +285,14 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
     } else {
       toast.success(`Se crearon ${payload.length} tareas exitosamente`);
       setPreviewData([]);
+      setSinEmparejar([]);
+      router.refresh();
     }
+  };
+
+  const cancelarVistaPrevia = () => {
+    setPreviewData([]);
+    setSinEmparejar([]);
   };
 
   const toggleCrear = (index: number) => {
@@ -265,11 +330,12 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
               </div>
               <div>
                 <label className="block text-sm font-bold text-axia-gray mb-1.5">Responsable por defecto</label>
-                <select value={responsable} onChange={e => setResponsable(e.target.value)} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white font-medium text-axia-dark">
-                  <option value="Agustin">Agustín</option>
-                  <option value="Chiara">Chiara</option>
-                  <option value="Paula">Paula</option>
+                <select value={responsable} onChange={e => cambiarResponsableDefault(e.target.value)} className="w-full border border-gray-200 rounded-lg p-2.5 outline-none focus:border-axia-teal bg-white font-medium text-axia-dark">
+                  {RESPONSABLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
+                {previewData.length > 0 && (
+                  <p className="text-[11px] text-axia-gray mt-1">Cambiarlo acá lo aplica a todas las tareas nuevas de la vista previa. También podés cambiarlo fila por fila.</p>
+                )}
               </div>
             </div>
 
@@ -292,27 +358,48 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
               </div>
             </div>
             {sinEmparejar.length > 0 && (
-              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="text-sm font-bold text-amber-800 mb-1">⚠️ Cuidado: Sociedades no encontradas</p>
-                <p className="text-xs text-amber-700">Las siguientes filas del archivo fueron ignoradas porque no coinciden con ninguna sociedad de tu base de datos: {sinEmparejar.join(", ")}</p>
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-bold text-amber-800 mb-1">⚠️ Cuidado: Sociedades no encontradas</p>
+                  <p className="text-xs text-amber-700">Las siguientes filas del archivo fueron ignoradas porque no coinciden con ninguna sociedad de tu base de datos: {sinEmparejar.join(", ")}</p>
+                </div>
+                {previewData.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={cancelarVistaPrevia}
+                    className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-amber-800 bg-white border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors"
+                  >
+                    <X size={14} /> Cancelar
+                  </button>
+                )}
               </div>
             )}
           </div>
 
           {previewData.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-emerald-200 overflow-hidden">
-              <div className="p-4 bg-emerald-50 border-b border-emerald-100 flex justify-between items-center">
+              <div className="p-4 bg-emerald-50 border-b border-emerald-100 flex flex-wrap justify-between items-center gap-3">
                 <div>
                   <h3 className="text-lg font-bold text-emerald-800">Vista Previa</h3>
                   <p className="text-xs text-emerald-700">Se detectaron {previewData.length} tareas. Seleccioná cuáles crear.</p>
                 </div>
-                <button 
-                  onClick={handleCreateTasks} 
-                  disabled={loading || previewData.filter(p => p.crear).length === 0}
-                  className="bg-emerald-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-sm hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-                >
-                  {loading ? "Creando..." : <><CheckCircle2 size={18}/> Crear {previewData.filter(p => p.crear).length} tareas</>}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelarVistaPrevia}
+                    disabled={loading}
+                    className="bg-white border border-gray-300 text-axia-gray px-4 py-2.5 rounded-lg font-bold shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <X size={18}/> Cancelar
+                  </button>
+                  <button 
+                    onClick={handleCreateTasks} 
+                    disabled={loading || previewData.filter(p => p.crear).length === 0}
+                    className="bg-emerald-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-sm hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {loading ? "Creando..." : <><CheckCircle2 size={18}/> Crear {previewData.filter(p => p.crear).length} tareas</>}
+                  </button>
+                </div>
               </div>
               <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                 <table className="w-full text-left border-collapse">
@@ -336,7 +423,16 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
                         <td className="p-3 font-bold text-axia-dark whitespace-nowrap">{p.sociedad}</td>
                         <td className="p-3 font-medium text-axia-gray">{p.obligacion}</td>
                         <td className="p-3 font-bold text-axia-teal">{p.fecha_vencimiento ? new Date(p.fecha_vencimiento+"T00:00:00").toLocaleDateString("es-AR") : ""}</td>
-                        <td className="p-3 text-axia-gray font-medium">{p.responsable}</td>
+                        <td className="p-3">
+                          <select
+                            value={p.responsable}
+                            onChange={e => cambiarResponsableFila(idx, e.target.value)}
+                            disabled={p.ya_existe}
+                            className="border border-gray-200 rounded-md px-2 py-1 text-sm font-medium text-axia-dark bg-white outline-none focus:border-axia-teal disabled:bg-gray-50 disabled:text-gray-400"
+                          >
+                            {RESPONSABLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                          </select>
+                        </td>
                         <td className="p-3 text-axia-gray font-medium">{p.horas_presupuestadas}</td>
                         <td className="p-3 text-center">
                           {p.ya_existe ? <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Ya Existe</span> : <span className="text-emerald-600 text-[10px] font-bold uppercase">Nueva</span>}
@@ -348,6 +444,54 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
               </div>
             </div>
           )}
+
+          {/* Historial de importaciones */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mt-6">
+            <div className="p-4 border-b border-gray-100 bg-slate-50 flex items-center gap-2">
+              <History size={18} className="text-axia-gray" />
+              <div>
+                <h3 className="text-sm font-bold text-axia-dark">Subidas anteriores</h3>
+                <p className="text-xs text-axia-gray">Anular una subida elimina sus tareas. Las completadas o con horas cargadas no se tocan.</p>
+              </div>
+            </div>
+            {lotesImportados.length === 0 ? (
+              <div className="p-6 text-center text-sm text-axia-gray">No hay subidas registradas.</div>
+            ) : (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white border-b border-gray-100 text-axia-gray text-[10px] tracking-wider uppercase font-bold">
+                    <th className="p-3">Fecha de subida</th>
+                    <th className="p-3">Meses</th>
+                    <th className="p-3 text-center">Tareas</th>
+                    <th className="p-3 text-center">Protegidas</th>
+                    <th className="p-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 text-sm">
+                  {lotesImportados.map(l => (
+                    <tr key={l.key} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 font-medium text-axia-dark whitespace-nowrap">
+                        {l.fecha_creacion ? new Date(l.fecha_creacion).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                      </td>
+                      <td className="p-3 text-axia-gray">{Array.from(l.meses as Set<string>).sort().map(m => { const [y, mm] = m.split("-"); return `${mm}/${y}`; }).join(", ") || "—"}</td>
+                      <td className="p-3 text-center font-bold text-axia-dark">{l.total}</td>
+                      <td className="p-3 text-center text-axia-gray">{l.protegidas}</td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => setLoteAAnular(l)}
+                          disabled={l.anulables.length === 0}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={l.anulables.length === 0 ? "Todas las tareas de esta subida ya tienen trabajo cargado" : "Anular subida"}
+                        >
+                          <Undo2 size={14} /> Anular subida
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
@@ -389,6 +533,33 @@ export default function GenerarClient({ plantillas, sociedades, clientes }: { pl
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Anular Subida */}
+      {loteAAnular && (
+        <div className="fixed inset-0 bg-axia-dark/50 flex items-center justify-center z-[60] backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 p-6">
+            <h3 className="text-xl font-bold text-axia-dark mb-2">Anular subida</h3>
+            <p className="text-axia-gray mb-2">
+              Se van a eliminar <strong>{loteAAnular.anulables.length}</strong> tareas de la subida del{" "}
+              <strong>{loteAAnular.fecha_creacion ? new Date(loteAAnular.fecha_creacion).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—"}</strong>.
+            </p>
+            {loteAAnular.protegidas > 0 && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-2">
+                {loteAAnular.protegidas} tareas se conservan porque están completadas o tienen horas cargadas.
+              </p>
+            )}
+            <p className="text-sm text-axia-gray mb-6">Esta acción no se puede deshacer. Después podés volver a subir el archivo.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setLoteAAnular(null)} disabled={anulando} className="px-5 py-2.5 text-axia-gray font-bold hover:bg-gray-50 rounded-lg transition-colors">
+                Cancelar
+              </button>
+              <button onClick={confirmarAnulacion} disabled={anulando} className="px-5 py-2.5 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2">
+                {anulando ? "Anulando..." : <><Trash2 size={18}/> Anular subida</>}
+              </button>
             </div>
           </div>
         </div>
